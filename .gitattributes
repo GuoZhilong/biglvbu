@@ -1,0 +1,2 @@
+# 强制所有文本文件用 LF 换行——bash 脚本（deploy.sh）遇到 CRLF 会直接报错
+* text=auto eol=lf
