@@ -1,0 +1,1096 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>合成999吕布挑战</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; user-select:none; -webkit-user-select:none; }
+  html,body { height:100%; }
+  body {
+    font-family:"PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+    background:#0c1420;
+    color:#dfe9f5;
+    overflow:hidden;
+    display:flex; flex-direction:column;
+  }
+  /* ---------- 顶部栏 ---------- */
+  header {
+    display:flex; align-items:center; gap:14px;
+    padding:10px 18px;
+    background:linear-gradient(180deg,#131f30,#0e1826);
+    border-bottom:1px solid #1f3247;
+    flex:0 0 auto;
+  }
+  header h1 {
+    font-size:20px; letter-spacing:2px;
+    background:linear-gradient(90deg,#ffd76a,#ff9d4d);
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+    text-shadow:0 0 18px rgba(255,180,80,.25);
+  }
+  #cardCount { font-size:13px; color:#8fb3d9; }
+  #cardCount b { color:#ffd76a; font-size:16px; }
+  #levelTag {
+    font-size:12px; font-weight:800; color:#3a2205; letter-spacing:1px;
+    background:linear-gradient(180deg,#ffd76a,#ffb45a);
+    border-radius:10px; padding:3px 12px;
+    box-shadow:0 2px 6px rgba(255,180,80,.3);
+  }
+  header .spacer { flex:1; }
+  .hbtn {
+    background:#18293d; color:#bcd6ef; border:1px solid #2b4460;
+    border-radius:8px; padding:6px 14px; font-size:13px; cursor:pointer;
+    transition:.15s;
+  }
+  .hbtn:hover { background:#223852; border-color:#3d6a95; }
+
+  /* ---------- 主区域 ---------- */
+  main { flex:1; display:flex; align-items:center; justify-content:center; position:relative; min-height:0; }
+
+  /* 棋盘地面氛围 */
+  #stage {
+    position:relative;
+    width:min(72vmin,540px); height:min(72vmin,540px);
+    border-radius:18px;
+    padding:10px;
+    background:
+      radial-gradient(120% 100% at 50% 0%, rgba(38,220,255,.06), transparent 60%),
+      linear-gradient(160deg,#152232,#0e1a28);
+    box-shadow:0 0 0 1px #23405c, 0 0 40px rgba(38,180,255,.10), 0 18px 50px rgba(0,0,0,.55);
+  }
+  #board {
+    width:100%; height:100%;
+    display:grid; grid-template-columns:repeat(5,1fr); grid-template-rows:repeat(5,1fr);
+    gap:4px;
+  }
+  .cell {
+    position:relative; border-radius:10px;
+    background:rgba(30,58,88,.28);
+    box-shadow:inset 0 0 0 1px rgba(64,140,190,.22);
+    transition:background .15s, box-shadow .15s;
+  }
+  .cell.hl-empty { background:rgba(38,200,150,.16); box-shadow:inset 0 0 0 2px rgba(60,230,170,.65); cursor:pointer; }
+  .cell.hl-target { background:rgba(255,190,70,.14); box-shadow:inset 0 0 0 2px rgba(255,200,90,.85); cursor:pointer; }
+  .cell.hl-pick   { background:rgba(120,160,255,.18); box-shadow:inset 0 0 0 2px rgba(140,180,255,.9); cursor:pointer; animation:pickPulse 1s infinite; }
+  .cell.hl-src    { box-shadow:inset 0 0 0 2px rgba(255,120,90,.9); }
+  .cell.dragover  { background:rgba(38,200,150,.28); }
+  @keyframes pickPulse { 50% { box-shadow:inset 0 0 0 3px rgba(160,200,255,1); } }
+
+  /* ---------- 棋子 ---------- */
+  .piece {
+    position:absolute; inset:6%;
+    border-radius:12px;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:1px; cursor:grab;
+    background:linear-gradient(180deg,#243b55,#16283e);
+    box-shadow:0 4px 10px rgba(0,0,0,.5), inset 0 0 0 2px rgba(255,205,100,.55);
+    transition:transform .12s;
+    z-index:2;
+  }
+  .piece:hover { transform:translateY(-3px); }
+  .piece.zhu { box-shadow:0 4px 10px rgba(0,0,0,.5), inset 0 0 0 2px rgba(140,170,150,.5); }
+  .piece.lvbu {
+    background:linear-gradient(180deg,#5a1f24,#33121a);
+    box-shadow:0 4px 12px rgba(0,0,0,.6), inset 0 0 0 2px rgba(255,90,70,.8), 0 0 18px rgba(255,80,60,.35);
+  }
+  .piece .face { font-size:clamp(18px,4.6vmin,34px); line-height:1.1; filter:drop-shadow(0 2px 3px rgba(0,0,0,.6)); }
+  .piece .pname { font-size:clamp(9px,1.7vmin,13px); color:#e8f1fb; letter-spacing:1px; }
+  .piece .plv {
+    font-size:clamp(10px,2vmin,15px); font-weight:700; color:#ffd76a;
+    background:rgba(0,0,0,.35); border-radius:6px; padding:0 7px;
+  }
+  .piece.lvbu .plv { color:#ff8a70; }
+  .piece .mrg {
+    position:absolute; top:-7px; right:-7px;
+    font-size:10px; font-weight:700; color:#1a0c0c;
+    background:linear-gradient(180deg,#ffb45a,#ff7d3a);
+    border-radius:9px; padding:1px 6px; box-shadow:0 2px 5px rgba(0,0,0,.5);
+  }
+  .piece.selected { outline:3px solid #6cf; outline-offset:2px; }
+  .piece.dragging { opacity:.35; }
+  .piece.pop { animation:pop .4s; }
+  @keyframes pop { 0%{transform:scale(.4);} 60%{transform:scale(1.15);} 100%{transform:scale(1);} }
+
+  /* ---------- 特效层 ---------- */
+  #fx { position:absolute; inset:0; pointer-events:none; z-index:10; }
+  .floaty {
+    position:absolute; transform:translate(-50%,-50%);
+    font-weight:800; font-size:clamp(14px,3vmin,22px);
+    color:#ffe08a; text-shadow:0 0 8px rgba(255,180,60,.8), 0 2px 3px #000;
+    animation:floatUp 1.3s ease-out forwards; white-space:nowrap;
+  }
+  .floaty.bad { color:#ff9a8a; text-shadow:0 0 8px rgba(255,90,60,.8), 0 2px 3px #000; }
+  .floaty.max { color:#ff5a4a; font-size:clamp(18px,4vmin,30px); }
+  @keyframes floatUp { 0%{opacity:0; margin-top:6px;} 15%{opacity:1;} 100%{opacity:0; margin-top:-46px;} }
+
+  /* ---------- 手牌区 ---------- */
+  #handArea {
+    flex:0 0 auto; display:flex; align-items:flex-end; justify-content:center; gap:10px;
+    flex-wrap:wrap; max-height:38vh; overflow-y:auto;
+    padding:12px 10px 16px;
+    background:linear-gradient(180deg,transparent,rgba(20,40,64,.55));
+  }
+  .card {
+    width:112px; height:150px; border-radius:12px; cursor:pointer;
+    background:linear-gradient(180deg,#1d3049,#122236);
+    border:1px solid #2f4d70; box-shadow:0 5px 14px rgba(0,0,0,.5);
+    display:flex; flex-direction:column; align-items:center; padding:10px 8px; gap:5px;
+    transition:transform .15s, box-shadow .15s, border-color .15s;
+    position:relative;
+  }
+  .card:hover { transform:translateY(-8px); }
+  .card .cicon { font-size:30px; }
+  .card .cname { font-size:14px; font-weight:700; letter-spacing:2px; }
+  .card .cdesc { font-size:10px; line-height:1.45; color:#93aec9; text-align:center; }
+  .card.lvbu { background:linear-gradient(180deg,#3d1a20,#22101a); border-color:#6e3040; }
+  .card.lvbu .cname { color:#ff9a80; }
+  .card.lvbu .clv {
+    font-size:13px; font-weight:800; color:#ffd0b0;
+    background:rgba(0,0,0,.4); padding:1px 9px; border-radius:7px;
+  }
+  .card.skill .cname { color:#ffd76a; }
+  .card.selected {
+    transform:translateY(-14px) scale(1.05);
+    border-color:#5ad0ff; box-shadow:0 0 20px rgba(90,208,255,.45), 0 8px 18px rgba(0,0,0,.5);
+  }
+  .card.disabled { opacity:.38; filter:grayscale(.7); cursor:not-allowed; }
+  .card.disabled:hover { transform:none; }
+  .card .badge { position:absolute; top:-7px; left:-7px; font-size:10px; color:#0d1a26; font-weight:800;
+    background:#5ad0ff; border-radius:8px; padding:1px 6px; }
+
+  /* ---------- 状态条 & 售卖栏 ---------- */
+  #statusBar {
+    position:absolute; top:-38px; left:50%; transform:translateX(-50%);
+    font-size:14px; color:#aee2ff; background:rgba(15,30,48,.9);
+    border:1px solid #2b4a6b; border-radius:20px; padding:5px 18px; white-space:nowrap;
+  }
+  #pieceBar {
+    position:absolute; bottom:-46px; left:50%; transform:translateX(-50%);
+    display:none; gap:10px;
+  }
+  #pieceBar button {
+    border:none; border-radius:8px; padding:7px 16px; font-size:13px; cursor:pointer; font-weight:700;
+  }
+  #sellBtn { background:linear-gradient(180deg,#ff8a5c,#e05238); color:#fff; }
+  #cancelSel { background:#26415e; color:#bcd6ef; }
+
+  /* ---------- 遮罩 & 弹窗 ---------- */
+  .overlay {
+    position:fixed; inset:0; background:rgba(5,10,18,.78); backdrop-filter:blur(3px);
+    display:none; align-items:center; justify-content:center; z-index:50;
+  }
+  .overlay.show { display:flex; }
+  .panel {
+    width:min(560px,92vw); max-height:84vh; overflow:auto;
+    background:linear-gradient(180deg,#16283e,#0f1c2c);
+    border:1px solid #2f5077; border-radius:16px; padding:24px 28px;
+    box-shadow:0 20px 60px rgba(0,0,0,.6);
+  }
+  .panel h2 { color:#ffd76a; font-size:19px; margin-bottom:14px; letter-spacing:2px; }
+  .panel .r { font-size:13.5px; line-height:1.75; color:#c6d9ec; margin-bottom:8px; }
+  .panel .r b { color:#ffe4a0; }
+  .panel .close { margin-top:14px; width:100%; padding:9px; border:none; border-radius:9px;
+    background:linear-gradient(180deg,#2c4d74,#1d3552); color:#d8eaff; font-size:14px; cursor:pointer; }
+  #resultPanel { text-align:center; }
+  #resultIcon { font-size:64px; margin-bottom:8px; }
+  #resultTitle { font-size:26px; font-weight:800; letter-spacing:3px; margin-bottom:8px; }
+  #resultTitle.win { color:#ffd76a; } #resultTitle.lose { color:#ff8a70; }
+  #resultDesc { font-size:14px; color:#a9c4de; margin-bottom:18px; line-height:1.7; }
+  #resultBtns { display:flex; gap:12px; justify-content:center; }
+  #againBtn, #nextBtn { padding:10px 34px; border:none; border-radius:10px; font-size:16px; font-weight:800; letter-spacing:2px; cursor:pointer; }
+  #againBtn { background:linear-gradient(180deg,#2c4d74,#1d3552); color:#d8eaff; }
+  #nextBtn { background:linear-gradient(180deg,#ffb45a,#ff7d3a); color:#3a1a08; }
+  #hintBox {
+    position:fixed; left:50%; bottom:190px; transform:translateX(-50%);
+    max-width:min(480px,90vw); background:rgba(20,40,64,.95); border:1px solid #3d6a95;
+    border-radius:12px; padding:12px 18px; font-size:13.5px; line-height:1.7; color:#ffe4b8;
+    display:none; z-index:40; box-shadow:0 8px 30px rgba(0,0,0,.5);
+  }
+
+  /* ---------- 自由挑战：左侧卡牌库 ---------- */
+  #freePanel {
+    position:absolute; right:100%; top:50%; transform:translateY(-50%);
+    margin-right:16px; width:150px;
+    background:linear-gradient(180deg,#16283e,#0f1c2c);
+    border:1px solid #2f5077; border-radius:16px;
+    padding:14px 12px; z-index:12;
+    display:none; flex-direction:column; gap:8px;
+    box-shadow:0 0 30px rgba(38,180,255,.12), 0 10px 30px rgba(0,0,0,.5);
+  }
+  .fp-title { font-size:12px; color:#ffd76a; text-align:center; line-height:1.5; margin-bottom:2px; }
+  .fp-card {
+    background:linear-gradient(180deg,#1d3049,#122236);
+    border:1px solid #2f4d70; border-radius:10px; padding:9px 8px; text-align:center;
+    cursor:pointer; font-size:13px; font-weight:700; color:#dfe9f5;
+    letter-spacing:2px; transition:.15s;
+  }
+  .fp-card .e { font-size:22px; display:block; margin-bottom:2px; }
+  .fp-card:hover { transform:translateY(-2px); border-color:#5ad0ff; box-shadow:0 0 14px rgba(90,208,255,.35); }
+  #freeReset {
+    border:none; border-radius:10px; padding:8px; margin-top:4px;
+    background:linear-gradient(180deg,#2c4d74,#1d3552); color:#d8eaff;
+    cursor:pointer; font-size:13px; font-weight:700;
+  }
+  #freeReset:hover { background:linear-gradient(180deg,#3a628f,#26415e); }
+
+  /* ---------- 售卖区（棋盘右侧） ---------- */
+  #sellZone {
+    position:absolute; left:100%; top:50%; transform:translateY(-50%);
+    margin-left:16px;
+    width:130px; padding:70px 10px;
+    border:2px dashed #8a4a38; border-radius:16px;
+    background:linear-gradient(180deg,rgba(120,50,35,.35),rgba(120,50,35,.15));
+    color:#ffb9a3; font-size:13px; text-align:center; line-height:1.9;
+    z-index:12; transition:.15s; cursor:default;
+  }
+  #sellZone .big { font-size:34px; display:block; }
+  #sellZone.active {
+    border-color:#ff8a5c; background:linear-gradient(90deg,rgba(255,120,70,.4),rgba(255,120,70,.15));
+    box-shadow:0 0 28px rgba(255,120,60,.45); color:#ffe0c8;
+  }
+  .card.dragging { opacity:.4; }
+</style>
+</head>
+<body>
+<header>
+  <h1>合成999吕布挑战</h1>
+  <span id="levelTag">第一关</span>
+  <span id="cardCount">剩余手牌 <b id="handNum">9</b><span id="handMax">/9</span></span>
+  <span id="bestTag" style="font-size:12px;color:#7fa8cf;"></span>
+  <div class="spacer"></div>
+  <button class="hbtn" id="hintBtn">💡 提示</button>
+  <button class="hbtn" id="ruleBtn">📜 规则</button>
+  <button class="hbtn" id="restartBtn">↻ 重新开始</button>
+</header>
+
+<main>
+  <div id="stage">
+    <div id="statusBar"></div>
+    <div id="board"></div>
+    <div id="fx"></div>
+    <div id="freePanel">
+      <div class="fp-title">🧰 自由卡牌库<br>点击加入手牌</div>
+      <div class="fp-card" data-type="lvbu"><span class="e">🔱</span>吕布</div>
+      <div class="fp-card" data-type="yizhi"><span class="e">🕯️</span>遗志</div>
+      <div class="fp-card" data-type="chuancheng"><span class="e">🧬</span>传承</div>
+      <div class="fp-card" data-type="huanshuai"><span class="e">🔄</span>换帅</div>
+      <button id="freeReset">↻ 重置回初始</button>
+    </div>
+    <div id="sellZone" title="拖入棋子出售"><span class="big">🛒</span>售卖区<br>拖入棋子<br>直接出售</div>
+    <div id="pieceBar">
+      <button id="sellBtn">售卖</button>
+      <button id="cancelSel">取消</button>
+    </div>
+  </div>
+</main>
+
+<div id="handArea"></div>
+<div id="hintBox"></div>
+
+<div class="overlay" id="ruleOverlay">
+  <div class="panel">
+    <h2>📜 游戏规则</h2>
+    <div class="r"><b>目标</b>：你只有 9 张手牌，设法让场上的 <b>吕布</b> 等级达到 <b>999</b>！</div>
+    <div class="r"><b>棋盘</b>：5×5 网格，站位决定"最近"关系，是解谜关键。</div>
+    <div class="r"><b>操作</b>：<b>拖拽</b>手牌到棋盘的棋子/空格上施放；<b>拖拽</b>棋子到空格换位；拖棋子到<b>右侧售卖区 🛒</b> 出售（点击卡牌后再点目标也可以）。</div>
+    <div class="r"><b>售卖</b>：拖棋子到售卖区，棋子直接消失、等级损失（免费动作）。</div>
+    <div class="r"><b>遗志</b>：指定一枚棋子，其全部等级<b>随机</b>转移给场上另一枚棋子，自身消失。</div>
+    <div class="r"><b>传承</b>：指定一枚棋子，其等级-1 <b>随机分成三份</b>分给其他等级最低的三枚棋子（不足三枚时，多余份数的等级<b>消散损失</b>），自身保留 1 级不消失。</div>
+    <div class="r"><b>换帅</b>：指定一枚<b>三国棋子</b>，与其<b>距离最近</b>的三国棋子互换等级（距离并列时由你点选）。</div>
+    <div class="r"><b>合成</b>：打出<b>吕布</b>牌时，场上有吕布则合并，等级 = 两者之和 +3；同一吕布<b>合成 3 次</b>后回到手牌（等级继承），可再次打出。场上无吕布则落到你选的空格。</div>
+    <div class="r"><b>关卡</b>：共两关 + 自由挑战。第二关手牌中一张「换帅」替换为「传承」；通关两关后解锁<b>自由挑战</b>——空手牌起始，从左侧卡牌库自由加入卡牌，随时重置回初始。</div>
+    <div class="r"><b>上限</b>：任何棋子等级最高 999，超出部分截断。</div>
+    <div class="r" style="color:#8fb3d9">提示：三国棋子 = 曹操 / 孙尚香 / 蔡文姬 / 赵云 / 吕布。猪八戒不是三国棋子。</div>
+    <button class="close" onclick="document.getElementById('ruleOverlay').classList.remove('show')">知道了</button>
+  </div>
+</div>
+
+<div class="overlay" id="resultOverlay">
+  <div class="panel" id="resultPanel">
+    <div id="resultIcon"></div>
+    <div id="resultTitle"></div>
+    <div id="resultDesc"></div>
+    <div id="resultBtns">
+      <button id="againBtn">再来一局</button>
+      <button id="nextBtn" style="display:none">进入下一关 →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== 核心逻辑层（纯函数，可被 node 提取测试） ==================== -->
+<script id="game-core">
+const GameCore = (function () {
+  const SIZE = 5, CAP = 999;
+  const DEFS = {
+    caocao:      { name:'曹操',   emoji:'👑', sanguo:true  },
+    sunshangxiang:{name:'孙尚香', emoji:'🏹', sanguo:true  },
+    caiwenji:    { name:'蔡文姬', emoji:'🎵', sanguo:true  },
+    zhaoyun:     { name:'赵云',   emoji:'⚔️', sanguo:true  },
+    zhubajie:    { name:'猪八戒', emoji:'🐷', sanguo:false },
+    lvbu:        { name:'吕布',   emoji:'🔱', sanguo:true  },
+  };
+  const CARD_INFO = {
+    lvbu:      { name:'吕布', emoji:'🔱', desc:'场上无吕布时落子；有吕布则合成（两者之和+3）。合成3次回手，等级继承。' },
+    yizhi:     { name:'遗志', emoji:'🕯️', desc:'指定一枚棋子，等级随机转移给另一枚棋子，自身消失。' },
+    chuancheng:{ name:'传承', emoji:'🧬', desc:'指定一枚棋子，等级-1随机分给其他最低的三枚，自身保留1级。' },
+    huanshuai: { name:'换帅', emoji:'🔄', desc:'指定一枚三国棋子，与其最近的三国棋子互换等级。' },
+  };
+
+  // 关卡配置：手牌组成（第三关=自由挑战，空手牌，从左侧卡牌库自由加入）
+  const LEVELS = [
+    { name: '第一关',
+      hand: [['lvbu',1],['lvbu',1],['lvbu',1],['lvbu',1],['lvbu',1],
+             ['yizhi',0],['chuancheng',0],['huanshuai',0],['huanshuai',0]] },
+    { name: '第二关',
+      hand: [['lvbu',1],['lvbu',1],['lvbu',1],['lvbu',1],['lvbu',1],
+             ['yizhi',0],['chuancheng',0],['chuancheng',0],['huanshuai',0]] },
+    { name: '自由挑战', hand: [] },
+  ];
+
+  function createInitialState(level = 1) {
+    const mk = (key, level, x, y) => ({
+      id: key, key, ...DEFS[key], level, x, y, merges: 0,
+    });
+    const pieces = [
+      mk('caocao', 250, 0, 0),
+      mk('sunshangxiang', 250, 1, 0),
+      mk('caiwenji', 250, 2, 0),
+      mk('zhaoyun', 250, 3, 0),
+      mk('zhubajie', 50, 4, 4),
+    ];
+    const lv = LEVELS[Math.max(0, Math.min(LEVELS.length, level) - 1)] || LEVELS[0];
+    const counters = {};
+    const hand = lv.hand.map(([type, lvl]) => {
+      const n = counters[type] = (counters[type] || 0) + 1;
+      const card = { uid: type + (n - 1), type };
+      if (type === 'lvbu') card.level = lvl;
+      return card;
+    });
+    return { level: LEVELS.indexOf(lv) + 1, levelName: lv.name,
+             pieces, hand, cardsPlayed: 0, status: 'playing', seq: 0 };
+  }
+
+  const clamp = v => Math.min(CAP, Math.max(0, v));
+  const dist2 = (a, b) => (a.x - b.x) ** 2 + (a.y - b.y) ** 2;
+  const getPiece = (s, id) => s.pieces.find(p => p.id === id);
+  const pieceAt = (s, x, y) => s.pieces.find(p => p.x === x && p.y === y);
+  const boardLvbu = s => s.pieces.find(p => p.key === 'lvbu');
+
+  // 换帅：距离最近的三国棋子（含并列）
+  function nearestSanguo(s, id) {
+    const src = getPiece(s, id);
+    if (!src || !src.sanguo) return { targets: [], dist: Infinity };
+    let best = Infinity, ids = [];
+    for (const p of s.pieces) {
+      if (p.id === id || !p.sanguo) continue;
+      const d = dist2(src, p);
+      if (d < best) { best = d; ids = [p.id]; }
+      else if (d === best) ids.push(p.id);
+    }
+    return { targets: ids, dist: Math.sqrt(best) };
+  }
+
+  function checkWin(s, ev) {
+    const lb = boardLvbu(s);
+    if (lb && lb.level >= CAP) { s.status = 'won'; ev.push({ type: 'win' }); }
+  }
+  // 出牌后：若手牌打空且未胜利 → 失败（自由挑战模式永不判负）
+  function afterCardPlayed(s, ev) {
+    if (s.level < 3 && s.status === 'playing' && s.hand.length === 0) {
+      s.status = 'lost'; ev.push({ type: 'lose' });
+    }
+  }
+  function consumeCard(s, uid) {
+    const i = s.hand.findIndex(c => c.uid === uid);
+    if (i < 0) throw new Error('card not in hand: ' + uid);
+    const card = s.hand[i];
+    s.hand.splice(i, 1);
+    s.cardsPlayed++;
+    return card;
+  }
+
+  // 把 amount 随机分成 n 份（随机组合分布）
+  function distribute(amount, n, rng) {
+    if (n <= 0) return [];
+    if (n === 1) return [amount];
+    const pts = [];
+    for (let i = 0; i < n - 1; i++) pts.push(rng() * amount);
+    pts.sort((a, b) => a - b);
+    const parts = []; let prev = 0;
+    for (const p of pts) { parts.push(Math.round(p) - prev); prev = Math.round(p); }
+    parts.push(amount - prev);
+    return parts;
+  }
+
+  // 售卖：棋子直接消失（免费动作）
+  function sellPiece(s, id) {
+    const p = getPiece(s, id);
+    if (!p) return { state: s, events: [], error: '棋子不存在' };
+    const ev = [{ type: 'sell', id, x: p.x, y: p.y, level: p.level, name: p.name }];
+    s.pieces = s.pieces.filter(q => q.id !== id);
+    return { state: s, events: ev };
+  }
+
+  // 拖拽移动到空格（免费动作）
+  function movePiece(s, id, x, y) {
+    const p = getPiece(s, id);
+    if (!p) return { state: s, events: [], error: '棋子不存在' };
+    if (x < 0 || x >= SIZE || y < 0 || y >= SIZE) return { state: s, events: [], error: '超出棋盘' };
+    const occ = pieceAt(s, x, y);
+    if (occ && occ.id !== id) return { state: s, events: [], error: '格子已被占用' };
+    p.x = x; p.y = y;
+    return { state: s, events: [{ type: 'move', id, x, y }] };
+  }
+
+  // 打出吕布牌
+  function playLvbu(s, uid, x, y, rng = Math.random) {
+    if (s.status !== 'playing') return { state: s, events: [], error: '游戏已结束' };
+    const card = s.hand.find(c => c.uid === uid && c.type === 'lvbu');
+    if (!card) return { state: s, events: [], error: '手牌无效' };
+    const lb = boardLvbu(s);
+    const ev = [];
+    if (lb) {
+      // 合成：两者之和 +3
+      const old = lb.level;
+      const next = old + card.level + 3;
+      lb.level = clamp(next);
+      lb.merges++;
+      consumeCard(s, uid);
+      ev.push({ type: 'merge', x: lb.x, y: lb.y, from: old, to: lb.level, cardLevel: card.level, merges: lb.merges });
+      if (lb.level < next) ev.push({ type: 'cap', x: lb.x, y: lb.y });
+      if (lb.merges >= 3) {
+        // 第3次合成：回手，等级继承
+        const lv = lb.level;
+        s.pieces = s.pieces.filter(q => q.id !== lb.id);
+        s.hand.push({ uid: 'lvbu-r' + (s.seq++), type: 'lvbu', level: lv });
+        ev.push({ type: 'return', x: lb.x, y: lb.y, level: lv });
+      }
+    } else {
+      // 落子
+      if (x == null || y == null) return { state: s, events: [], error: '需要选择落点' };
+      if (x < 0 || x >= SIZE || y < 0 || y >= SIZE) return { state: s, events: [], error: '超出棋盘' };
+      if (pieceAt(s, x, y)) return { state: s, events: [], error: '格子已被占用' };
+      consumeCard(s, uid);
+      const p = { id: 'lvbu' + (s.seq++), key: 'lvbu', ...DEFS.lvbu, level: clamp(card.level), x, y, merges: 0 };
+      s.pieces.push(p);
+      ev.push({ type: 'place', x, y, level: p.level });
+    }
+    checkWin(s, ev);
+    afterCardPlayed(s, ev);
+    return { state: s, events: ev };
+  }
+
+  // 遗志：等级随机转移给另一枚棋子，自身消失
+  function useYizhi(s, uid, sourceId, rng = Math.random) {
+    if (s.status !== 'playing') return { state: s, events: [], error: '游戏已结束' };
+    const src = getPiece(s, sourceId);
+    if (!src) return { state: s, events: [], error: '棋子不存在' };
+    const others = s.pieces.filter(p => p.id !== sourceId);
+    if (!others.length) return { state: s, events: [], error: '场上没有其他棋子' };
+    const target = others[Math.floor(rng() * others.length)];
+    consumeCard(s, uid);
+    const ev = [];
+    const next = target.level + src.level;
+    target.level = clamp(next);
+    if (target.level < next) ev.push({ type: 'cap', x: target.x, y: target.y });
+    s.pieces = s.pieces.filter(p => p.id !== sourceId);
+    ev.push({ type: 'transfer', fromX: src.x, fromY: src.y, toX: target.x, toY: target.y,
+              amount: src.level, fromName: src.name, toName: target.name, toId: target.id, toLevel: target.level });
+    checkWin(s, ev);
+    afterCardPlayed(s, ev);
+    return { state: s, events: ev };
+  }
+
+  // 传承：等级-1 随机分给其他最低的三枚，自身保留1
+  function useChuancheng(s, uid, sourceId, rng = Math.random) {
+    if (s.status !== 'playing') return { state: s, events: [], error: '游戏已结束' };
+    const src = getPiece(s, sourceId);
+    if (!src) return { state: s, events: [], error: '棋子不存在' };
+    const others = s.pieces.filter(p => p.id !== sourceId);
+    if (!others.length) return { state: s, events: [], error: '场上没有其他棋子' };
+    consumeCard(s, uid);
+    const amount = src.level - 1;
+    // 永远随机分成三份；其他棋子不足3个时，多余份数的等级直接损失
+    const sorted = [...others].sort((a, b) => a.level - b.level || rng() - 0.5);
+    const recipients = sorted.slice(0, Math.min(3, sorted.length));
+    const parts = distribute(amount, 3, rng);
+    src.level = 1;
+    let given = 0;
+    for (let i = 0; i < recipients.length; i++) given += parts[i];
+    const lost = amount - given;
+    const ev = [{ type: 'split', x: src.x, y: src.y, name: src.name, amount }];
+    if (lost > 0) ev.push({ type: 'lost', x: src.x, y: src.y, amount: lost });
+    recipients.forEach((r, i) => {
+      const old = r.level;
+      const next = old + parts[i];
+      r.level = clamp(next);
+      ev.push({ type: 'gain', x: r.x, y: r.y, from: old, to: r.level, amount: parts[i], id: r.id });
+      if (r.level < next) ev.push({ type: 'cap', x: r.x, y: r.y });
+    });
+    checkWin(s, ev);
+    afterCardPlayed(s, ev);
+    return { state: s, events: ev };
+  }
+
+  // 换帅：与最近的三国棋子互换等级；并列时未指定 targetId → 返回 needsPick
+  function useHuanshuai(s, uid, sourceId, targetId, rng = Math.random) {
+    if (s.status !== 'playing') return { state: s, events: [], error: '游戏已结束' };
+    const src = getPiece(s, sourceId);
+    if (!src) return { state: s, events: [], error: '棋子不存在' };
+    if (!src.sanguo) return { state: s, events: [], error: '换帅只能指定三国棋子' };
+    const { targets } = nearestSanguo(s, sourceId);
+    if (!targets.length) return { state: s, events: [], error: '场上没有其他三国棋子' };
+    let tid = targetId;
+    if (!tid) {
+      if (targets.length === 1) tid = targets[0];
+      else return { state: s, needsPick: true, candidates: targets, events: [] };
+    }
+    if (!targets.includes(tid)) return { state: s, events: [], error: '目标不是最近的三国棋子' };
+    const tgt = getPiece(s, tid);
+    consumeCard(s, uid);
+    const a = src.level, b = tgt.level;
+    src.level = b; tgt.level = a;
+    const ev = [{ type: 'swap', aX: src.x, aY: src.y, bX: tgt.x, bY: tgt.y,
+                  aName: src.name, bName: tgt.name, aLevel: b, bLevel: a, aId: src.id, bId: tgt.id }];
+    checkWin(s, ev);
+    afterCardPlayed(s, ev);
+    return { state: s, events: ev };
+  }
+
+  return { SIZE, CAP, DEFS, CARD_INFO, LEVELS, createInitialState, nearestSanguo, sellPiece, movePiece,
+           playLvbu, useYizhi, useChuancheng, useHuanshuai, getPiece, pieceAt, boardLvbu };
+})();
+if (typeof window !== 'undefined') window.GameCore = GameCore;
+if (typeof module !== 'undefined' && module.exports) module.exports = GameCore;
+</script>
+
+<!-- ==================== UI 层 ==================== -->
+<script>
+(function () {
+  const G = window.GameCore;
+  const $ = id => document.getElementById(id);
+  let S = G.createInitialState();
+  const ui = { selCard: null, selPiece: null, hsSource: null, hsCandidates: null, hintLv: 0 };
+
+  const boardEl = $('board'), handEl = $('handArea'), fxEl = $('fx');
+  const statusBar = $('statusBar'), pieceBar = $('pieceBar');
+
+  /* ---------- 渲染 ---------- */
+  function render() {
+    boardEl.innerHTML = '';
+    for (let y = 0; y < G.SIZE; y++) {
+      for (let x = 0; x < G.SIZE; x++) {
+        const cell = document.createElement('div');
+        cell.className = 'cell';
+        cell.dataset.x = x; cell.dataset.y = y;
+        decorateCell(cell, x, y);
+        const p = G.pieceAt(S, x, y);
+        if (p) cell.appendChild(makePiece(p));
+        boardEl.appendChild(cell);
+      }
+    }
+    renderHand();
+    $('handNum').textContent = S.hand.length;
+    $('handMax').style.display = S.level >= 3 ? 'none' : 'inline';
+    $('levelTag').textContent = S.levelName || ('第' + S.level + '关');
+    $('freePanel').style.display = S.level >= 3 ? 'flex' : 'none';
+    renderStatus();
+    pieceBar.style.display = ui.selPiece && S.status === 'playing' ? 'flex' : 'none';
+    if (ui.selPiece) {
+      const p = G.getPiece(S, ui.selPiece);
+      $('sellBtn').textContent = p ? `售卖「${p.name}」(-${p.level}级)` : '售卖';
+    }
+  }
+
+  function decorateCell(cell, x, y) {
+    if (S.status !== 'playing') return;
+    const p = G.pieceAt(S, x, y);
+    if (ui.hsCandidates && ui.hsCandidates.includes(p && p.id)) cell.classList.add('hl-pick');
+    if (ui.selPiece === (p && p.id)) cell.classList.add('hl-src');
+    if (ui.hsSource && ui.hsSource === (p && p.id)) cell.classList.add('hl-src');
+    if (ui.selCard) {
+      const card = S.hand.find(c => c.uid === ui.selCard);
+      if (!card) return;
+      if (card.type === 'lvbu' && !G.boardLvbu(S) && !p) cell.classList.add('hl-empty');
+      if ((card.type === 'yizhi' || card.type === 'chuancheng') && p) cell.classList.add('hl-target');
+      if (card.type === 'huanshuai') {
+        if (!ui.hsSource && p && p.sanguo) cell.classList.add('hl-target');
+        if (ui.hsSource && ui.hsCandidates && ui.hsCandidates.includes(p && p.id)) cell.classList.add('hl-pick');
+      }
+    }
+  }
+
+  function makePiece(p) {
+    const el = document.createElement('div');
+    el.className = 'piece' + (p.key === 'zhubajie' ? ' zhu' : '') + (p.key === 'lvbu' ? ' lvbu' : '')
+      + (ui.selPiece === p.id ? ' selected' : '');
+    el.dataset.id = p.id;
+    el.innerHTML = `<div class="face">${p.emoji}</div>
+      <div class="pname">${p.name}</div>
+      <div class="plv">${p.level}级</div>
+      ${p.key === 'lvbu' ? `<div class="mrg">合成 ${p.merges}/3</div>` : ''}`;
+    if (S.status === 'playing') {
+      el.draggable = canDrag();
+      el.addEventListener('pointerdown', () => onPieceClick(p.id));
+    }
+    return el;
+  }
+
+  function renderHand() {
+    handEl.innerHTML = '';
+    for (const c of S.hand) {
+      const info = G.CARD_INFO[c.type];
+      const el = document.createElement('div');
+      el.className = 'card ' + (c.type === 'lvbu' ? 'lvbu' : 'skill')
+        + (ui.selCard === c.uid ? ' selected' : '')
+        + (S.status === 'playing' && !cardUsable(c) ? ' disabled' : '');
+      el.innerHTML = `<div class="cicon">${info.emoji}</div>
+        <div class="cname">${info.name}</div>
+        ${c.type === 'lvbu' ? `<div class="clv">等级 ${c.level}</div>` : ''}
+        <div class="cdesc">${info.desc}</div>`;
+      if (S.status === 'playing') {
+        el.addEventListener('click', () => onCardClick(c.uid));
+        if (cardUsable(c)) {
+          el.draggable = true;
+          el.addEventListener('dragstart', e => onCardDragStart(e, c.uid));
+          el.addEventListener('dragend', onCardDragEnd);
+        }
+      }
+      handEl.appendChild(el);
+    }
+  }
+
+  function canDrag() { return !ui.selCard; }
+
+  // 卡牌当前是否可合法使用（用于置灰）
+  function cardUsable(c) {
+    if (c.type === 'lvbu') {
+      return G.boardLvbu(S) ? true : S.pieces.length < G.SIZE * G.SIZE;
+    }
+    if (c.type === 'yizhi' || c.type === 'chuancheng') return S.pieces.length >= 2;
+    if (c.type === 'huanshuai') return S.pieces.some(p => p.sanguo) && S.pieces.filter(p => p.sanguo).length >= 2;
+    return true;
+  }
+
+  const MODE_TEXT = {
+    idle: '拖手牌到棋盘施放 · 拖棋子换位 · 拖棋子到右侧🛒售卖区出售（也可点选操作）',
+    yizhi: '遗志：拖到/点选一枚棋子，其等级将随机转移给另一枚棋子',
+    chuancheng: '传承：拖到/点选一枚棋子，其等级-1将随机分给其他最低的三枚',
+    huanshuai_src: '换帅：拖到/点选一枚三国棋子作为换帅对象',
+    huanshuai_pick: '换帅：最近距离并列 —— 请点选要互换的目标',
+    lvbu_place: '吕布：拖到/点击高亮空格落子',
+    lvbu_merge: '吕布：拖到/点击场上的吕布进行合成',
+  };
+
+  function renderStatus() {
+    let t = MODE_TEXT.idle;
+    if (S.status === 'playing' && ui.selCard) {
+      const c = S.hand.find(x => x.uid === ui.selCard);
+      if (c) {
+        if (c.type === 'yizhi') t = MODE_TEXT.yizhi;
+        else if (c.type === 'chuancheng') t = MODE_TEXT.chuancheng;
+        else if (c.type === 'huanshuai') t = ui.hsSource ? MODE_TEXT.huanshuai_pick : MODE_TEXT.huanshuai_src;
+        else if (c.type === 'lvbu') t = G.boardLvbu(S) ? MODE_TEXT.lvbu_merge : MODE_TEXT.lvbu_place;
+      }
+    }
+    statusBar.textContent = t;
+  }
+
+  /* ---------- 交互 ---------- */
+  function clearSel() {
+    ui.selCard = null; ui.hsSource = null; ui.hsCandidates = null;
+    ui.selPiece = null;
+  }
+
+  function onCardClick(uid) {
+    const c = S.hand.find(x => x.uid === uid);
+    if (!c || !cardUsable(c)) return;
+    if (ui.selCard === uid) { clearSel(); render(); return; } // 再点一次取消
+    ui.selPiece = null; ui.hsSource = null; ui.hsCandidates = null;
+    ui.selCard = uid;
+    render();
+  }
+
+  function onPieceClick(id) {
+    if (S.status !== 'playing') return;
+    // 换帅流程
+    if (ui.selCard) {
+      const c = S.hand.find(x => x.uid === ui.selCard);
+      if (!c) return;
+      const p = G.getPiece(S, id);
+      if (c.type === 'yizhi' || c.type === 'chuancheng') {
+        const cardUid = ui.selCard;
+        cast(cardUid, () => c.type === 'yizhi'
+          ? G.useYizhi(S, cardUid, id)
+          : G.useChuancheng(S, cardUid, id));
+        return;
+      }
+      if (c.type === 'huanshuai') {
+        if (!p.sanguo) return;
+        if (!ui.hsSource) {
+          const r = G.useHuanshuai(S, ui.selCard, id);
+          if (r.needsPick) { ui.hsSource = id; ui.hsCandidates = r.candidates; render(); }
+          else { ui.selCard = null; applyResult(r); }
+        } else if (ui.hsCandidates && ui.hsCandidates.includes(id)) {
+          const r = G.useHuanshuai(S, ui.selCard, ui.hsSource, id);
+          ui.hsSource = null; ui.hsCandidates = null; ui.selCard = null;
+          applyResult(r);
+        }
+        return;
+      }
+      if (c.type === 'lvbu' && p.key === 'lvbu') {
+        const cardUid = ui.selCard;
+        cast(cardUid, () => G.playLvbu(S, cardUid));
+        return;
+      }
+      return;
+    }
+    // 普通点选：售卖选择
+    ui.selPiece = ui.selPiece === id ? null : id;
+    render();
+  }
+
+  boardEl.addEventListener('click', e => {
+    if (S.status !== 'playing') return;
+    const cell = e.target.closest('.cell');
+    if (!cell || e.target.closest('.piece')) return;
+    if (ui.selCard) {
+      const c = S.hand.find(x => x.uid === ui.selCard);
+      if (c && c.type === 'lvbu' && !G.boardLvbu(S)) {
+        const x = +cell.dataset.x, y = +cell.dataset.y;
+        if (!G.pieceAt(S, x, y)) cast(ui.selCard, () => G.playLvbu(S, ui.selCard, x, y));
+      }
+    }
+  });
+
+  function cast(uid, fn) {
+    const r = fn();
+    ui.selCard = null; ui.hsSource = null; ui.hsCandidates = null; ui.selPiece = null;
+    applyResult(r, uid, true);
+  }
+
+  function applyResult(r, uid, fromCast) {
+    if (r.error) { render(); toast(r.error); return; }
+    S = r.state;
+    render();
+    playFx(r.events || []);
+    if (S.status === 'won') {
+      if (S.level >= 3) {
+        // 自由挑战：达成999只庆祝，不结束，可继续操作
+        S.status = 'playing';
+        const lb = G.boardLvbu(S);
+        if (lb) floaty(lb.x, lb.y, '🏆 999 达成!', 'max');
+        toast('🏆 自由挑战：吕布999达成！继续自由发挥吧');
+        render();
+      } else setTimeout(() => showResult(true), 900);
+    }
+    else if (S.status === 'lost') setTimeout(() => showResult(false), 900);
+  }
+
+  function toast(msg) {
+    const box = $('hintBox');
+    box.textContent = msg;
+    box.style.display = 'block';
+    clearTimeout(toast._t);
+    toast._t = setTimeout(() => { if (!ui.hintLv) box.style.display = 'none'; }, 2200);
+  }
+
+  /* ---------- 拖拽系统：棋子移动 / 卡牌施放 / 售卖 ---------- */
+  const sellZone = $('sellZone');
+  let dragId = null;      // 正在拖拽的棋子 id
+  let dragCardUid = null; // 正在拖拽的手牌 uid
+
+  function clearDragHighlights() {
+    for (const cell of boardEl.children)
+      cell.classList.remove('hl-empty', 'hl-target', 'hl-pick', 'hl-src', 'dragover');
+  }
+
+  // 拖卡牌时直接在高亮现有格子（不重渲染，避免打断拖拽）
+  function applyCardDragHighlights(uid) {
+    const card = S.hand.find(c => c.uid === uid);
+    if (!card) return;
+    const lb = G.boardLvbu(S);
+    for (const cell of boardEl.children) {
+      const p = G.pieceAt(S, +cell.dataset.x, +cell.dataset.y);
+      let cls = null;
+      if (card.type === 'lvbu') {
+        if (lb) { if (p && p.key === 'lvbu') cls = 'hl-target'; }
+        else if (!p) cls = 'hl-empty';
+      } else if (card.type === 'huanshuai') {
+        if (p && p.sanguo) cls = 'hl-target';
+      } else if (p) cls = 'hl-target';
+      if (cls) cell.classList.add(cls);
+    }
+  }
+
+  function onCardDragStart(e, uid) {
+    if (S.status !== 'playing' || dragId) { e.preventDefault(); return; }
+    const el = e.currentTarget;
+    if (el.classList.contains('disabled')) { e.preventDefault(); return; }
+    dragCardUid = uid;
+    ui.selCard = uid;          // 复用高亮与状态提示
+    ui.selPiece = null; ui.hsSource = null; ui.hsCandidates = null;
+    e.dataTransfer.setData('text/plain', 'card:' + uid);
+    e.dataTransfer.effectAllowed = 'move';
+    el.classList.add('dragging');
+    applyCardDragHighlights(uid);
+    renderStatus();
+  }
+
+  function onCardDragEnd() {
+    if (!dragCardUid) return;
+    dragCardUid = null;
+    ui.selCard = null; ui.hsSource = null; ui.hsCandidates = null;
+    render();
+  }
+
+  // ----- 棋子拖拽（移动 / 售卖） -----
+  boardEl.addEventListener('dragstart', e => {
+    const pe = e.target.closest('.piece');
+    if (!pe || !canDrag() || S.status !== 'playing' || dragCardUid) { e.preventDefault(); return; }
+    dragId = pe.dataset.id;
+    ui.selPiece = null; // 拖拽时取消选中，避免误弹售卖栏
+    pe.classList.add('dragging');
+    e.dataTransfer.setData('text/plain', dragId);
+    e.dataTransfer.effectAllowed = 'move';
+    for (const cell of boardEl.children) {          // 高亮所有可移动到的空格
+      if (!G.pieceAt(S, +cell.dataset.x, +cell.dataset.y)) cell.classList.add('hl-empty');
+    }
+  });
+  boardEl.addEventListener('dragend', () => {
+    if (!dragId) return;
+    dragId = null;
+    sellZone.classList.remove('active');
+    render();
+  });
+
+  // ----- 棋盘：拖拽经过/落下 -----
+  boardEl.addEventListener('dragover', e => {
+    const cell = e.target.closest('.cell');
+    if (!cell) return;
+    const x = +cell.dataset.x, y = +cell.dataset.y;
+    const occ = G.pieceAt(S, x, y);
+    if (dragId) {                                    // 棋子移动
+      e.preventDefault();
+      cell.classList.toggle('dragover', !occ || occ.id === dragId);
+    } else if (dragCardUid) {                        // 卡牌施放
+      const card = S.hand.find(c => c.uid === dragCardUid);
+      if (!card) return;
+      let ok = false;
+      if (card.type === 'lvbu') ok = occ ? occ.key === 'lvbu' : true;
+      else if (card.type === 'huanshuai') ok = !!occ && occ.sanguo;
+      else ok = !!occ;
+      if (ok) { e.preventDefault(); cell.classList.add('dragover'); }
+    }
+  });
+  boardEl.addEventListener('dragleave', e => {
+    const cell = e.target.closest('.cell');
+    if (cell) cell.classList.remove('dragover');
+  });
+  boardEl.addEventListener('drop', e => {
+    const cell = e.target.closest('.cell');
+    if (!cell) return;
+    e.preventDefault();
+    const x = +cell.dataset.x, y = +cell.dataset.y;
+    const occ = G.pieceAt(S, x, y);
+    if (dragId) {                                    // 落子移动
+      const r = G.movePiece(S, dragId, x, y);
+      dragId = null;
+      if (r.error) toast(r.error);
+      render();
+      return;
+    }
+    if (dragCardUid) {                               // 落卡施放
+      const uid = dragCardUid;
+      const card = S.hand.find(c => c.uid === uid);
+      dragCardUid = null; ui.selCard = null;
+      if (!card) { render(); return; }
+      if (card.type === 'lvbu') {
+        if (occ && occ.key === 'lvbu') cast(uid, () => G.playLvbu(S, uid));
+        else if (!occ) cast(uid, () => G.playLvbu(S, uid, x, y));
+        else { render(); }
+      } else if (card.type === 'huanshuai') {
+        if (!occ || !occ.sanguo) { render(); return; }
+        const r = G.useHuanshuai(S, uid, occ.id);
+        if (r.needsPick) {           // 距离并列：保留选中态，进入点选模式
+          ui.selCard = uid; ui.hsSource = occ.id; ui.hsCandidates = r.candidates;
+          render();
+        } else { ui.selCard = null; applyResult(r); }
+      } else {
+        if (!occ) { render(); return; }
+        cast(uid, () => card.type === 'yizhi'
+          ? G.useYizhi(S, uid, occ.id)
+          : G.useChuancheng(S, uid, occ.id));
+      }
+    }
+  });
+
+  // ----- 售卖区：拖棋子进来出售 -----
+  sellZone.addEventListener('dragover', e => {
+    if (!dragId) return;
+    e.preventDefault();
+    sellZone.classList.add('active');
+  });
+  sellZone.addEventListener('dragleave', () => sellZone.classList.remove('active'));
+  sellZone.addEventListener('drop', e => {
+    e.preventDefault();
+    sellZone.classList.remove('active');
+    if (!dragId) return;
+    const id = dragId; dragId = null;
+    const p = G.getPiece(S, id);
+    if (!p) { render(); return; }
+    const r = G.sellPiece(S, id);
+    ui.selPiece = null;
+    S = r.state;
+    render();
+    playFx(r.events);
+  });
+
+  /* ---------- 售卖 ---------- */
+  $('sellBtn').addEventListener('click', () => {
+    if (!ui.selPiece) return;
+    const p = G.getPiece(S, ui.selPiece);
+    if (!p) return;
+    const r = G.sellPiece(S, ui.selPiece);
+    ui.selPiece = null;
+    S = r.state;
+    render();
+    playFx(r.events);
+  });
+  $('cancelSel').addEventListener('click', () => { ui.selPiece = null; render(); });
+
+  // ----- 自由挑战：左侧卡牌库 -----
+  document.querySelectorAll('#freePanel .fp-card').forEach(el => {
+    el.addEventListener('click', () => {
+      if (S.level < 3 || S.status !== 'playing') return;
+      const type = el.dataset.type;
+      const card = { uid: 'free' + (S.seq++), type };
+      if (type === 'lvbu') card.level = 1;
+      S.hand.push(card);
+      render();
+    });
+  });
+  $('freeReset').addEventListener('click', () => startLevel(3));
+  document.addEventListener('click', e => {
+    if (!e.target.closest('#stage') && !e.target.closest('.piece')) {
+      if (ui.selPiece && !e.target.closest('#pieceBar')) { ui.selPiece = null; render(); }
+    }
+  }, true);
+
+  /* ---------- 特效 ---------- */
+  function cellPos(x, y) {
+    return { left: ((x + 0.5) / G.SIZE) * 100 + '%', top: ((y + 0.5) / G.SIZE) * 100 + '%' };
+  }
+  function floaty(x, y, text, cls = '') {
+    const pos = cellPos(x, y);
+    const el = document.createElement('div');
+    el.className = 'floaty ' + cls;
+    el.textContent = text;
+    el.style.left = pos.left; el.style.top = pos.top;
+    fxEl.appendChild(el);
+    setTimeout(() => el.remove(), 1400);
+  }
+  function playFx(events) {
+    for (const ev of events) {
+      switch (ev.type) {
+        case 'transfer':
+          floaty(ev.fromX, ev.fromY, `-${ev.amount}`, 'bad');
+          floaty(ev.toX, ev.toY, `+${ev.amount}`);
+          break;
+        case 'gain': floaty(ev.x, ev.y, `+${ev.amount}`); break;
+        case 'lost': floaty(ev.x, ev.y, `消散 -${ev.amount}`, 'bad'); break;
+        case 'split': floaty(ev.x, ev.y, `${ev.name} -${ev.amount}`, 'bad'); break;
+        case 'swap':
+          floaty(ev.aX, ev.aY, `${ev.aName}→${ev.aLevel}`);
+          floaty(ev.bX, ev.bY, `${ev.bName}→${ev.bLevel}`);
+          break;
+        case 'merge': floaty(ev.x, ev.y, `合成 +${ev.to - ev.from} → ${ev.to}级`); break;
+        case 'return': floaty(ev.x, ev.y, `回手！等级${ev.level}`, ''); break;
+        case 'place': floaty(ev.x, ev.y, `吕布 ${ev.level}级`); break;
+        case 'sell': floaty(ev.x, ev.y, `${ev.name} -${ev.level}`, 'bad'); break;
+        case 'cap': floaty(ev.x, ev.y, 'MAX 999!', 'max'); break;
+        case 'win': break;
+      }
+    }
+  }
+
+  /* ---------- 结算 / 提示 / 规则 ---------- */
+  function showResult(won) {
+    const isLast = S.level >= G.LEVELS.length;
+    const t = $('resultTitle');
+    const againBtn = $('againBtn'), nextBtn = $('nextBtn');
+    nextBtn.style.display = 'none';
+    if (won) {
+      $('resultIcon').textContent = isLast ? '👑' : '🏆';
+      t.className = 'win';
+      try {
+        const best = +localStorage.getItem('lvbu999_best') || 0;
+        if (!best) localStorage.setItem('lvbu999_best', String(S.cardsPlayed));
+        var extra = best ? `（历史最佳：${best} 张牌达成）` : '';
+      } catch (e) { var extra = ''; }
+      if (isLast) {
+        t.textContent = '全部通关！';
+        $('resultDesc').innerHTML = `两大关卡全部攻克，吕布 999 达成！👑<br>本关共打出 ${S.cardsPlayed} 张牌 ${extra}`;
+        againBtn.textContent = '从头再战';
+        againBtn.onclick = () => startLevel(1);
+      } else {
+        t.textContent = `第${S.level}关通过！`;
+        $('resultDesc').innerHTML = `吕布达成 <b style="color:#ffd76a">999</b> 级！<br>下一关：<b style="color:#ffd76a">自由挑战模式</b>解锁——空手牌起始，卡牌随心加！ ${extra}`;
+        againBtn.textContent = '重打本关';
+        againBtn.onclick = () => startLevel(S.level);
+        nextBtn.style.display = 'inline-block';
+      }
+    } else {
+      $('resultIcon').textContent = '💀';
+      t.textContent = '挑战失败';
+      t.className = 'lose';
+      $('resultDesc').innerHTML = `9 张手牌已用完，吕布未能达到 999 级。<br>再想想……提示：场上每 1 级都很珍贵！`;
+      againBtn.textContent = '再试一次';
+      againBtn.onclick = () => startLevel(S.level);
+    }
+    $('resultOverlay').classList.add('show');
+  }
+  $('nextBtn').addEventListener('click', () => startLevel(S.level + 1));
+  $('restartBtn').addEventListener('click', () => {
+    if (S.status === 'playing' && !confirm('重新开始本关？当前进度将丢失。')) return;
+    startLevel(S.level);
+  });
+  function startLevel(n) {
+    S = G.createInitialState(n);
+    clearSel();
+    $('resultOverlay').classList.remove('show');
+    $('hintBox').style.display = 'none'; ui.hintLv = 0;
+    render();
+  }
+
+  const HINTS = {
+    1: [
+      '① 总等级 1050 是有限的：卖猪八戒只损失 50，但卖三国棋子损失 250 就很难翻盘了。先清理不必的棋子，还能让"遗志"的随机转移变成必中！',
+      '② 传承把一个 250 分成三份 ≈ 各 333；遗志把两个 333 合成一个 666 —— 想办法让场上只剩下"一个 333 和一个 666"。',
+      '③ 吕布两次换帅：先借走 333，连续合成三轮回手（约345级）；再借走 666，打出回手的高等级吕布卡 —— 666 + 345 + 3 ≥ 999！',
+    ],
+    2: [
+      '① 这一关只有一张换帅，但传承有两张 —— 传承永远三等分，队友不足三枚时多余的等级会消散，喂得太少就亏了。',
+      '② 老套路开局：卖猪八戒 → 传承一个250（三家≈333）→ 卖掉剩下的1级棋子 → 遗志333变666。',
+      '③ 好好想想：换帅只有一次机会，666 和 333 该先借哪个？回手的吕布卡等级越高，最后一击越疼。',
+    ],
+  };
+  $('hintBtn').addEventListener('click', () => {
+    const hints = HINTS[S.level] || HINTS[1];
+    const box = $('hintBox');
+    if (ui.hintLv >= hints.length) { box.style.display = 'none'; ui.hintLv = 0; return; }
+    box.textContent = hints[ui.hintLv++];
+    box.style.display = 'block';
+  });
+  $('ruleBtn').addEventListener('click', () => $('ruleOverlay').classList.add('show'));
+
+  try {
+    const best = +localStorage.getItem('lvbu999_best') || 0;
+    if (best) $('bestTag').textContent = `🏆 最佳：${best} 张牌达成`;
+  } catch (e) {}
+
+  render();
+})();
+</script>
+</body>
+</html>

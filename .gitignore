@@ -1,0 +1,12 @@
+# 服务器运行时数据（绝不能提交）
+server/users.json
+server/users.json.tmp
+server/out.log
+
+# 开发依赖（保留 package.json，重装用 npm i）
+node_modules/
+
+# 系统杂项
+Thumbs.db
+Desktop.ini
+*.tmp
