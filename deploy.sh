@@ -26,16 +26,19 @@ echo "后端文件: $SERVER_JS"
 echo "游戏页面: $HTML_FILE"
 echo "端口:     $PORT"
 
-# 文件完整性检查
-if [ ! -f "$SERVER_JS" ]; then
-  echo "❌ 找不到 $SERVER_JS"
-  echo "   请确认把整个 game 文件夹（含 server 子目录）都上传了"
-  exit 1
-fi
-if [ ! -f "$HTML_FILE" ]; then
-  echo "❌ 找不到 $HTML_FILE"
-  echo "   请确认游戏 HTML 已上传，且中文文件名在传输中没有被改乱"
-  echo "   检查: ls -la \"$APP_DIR\""
+# 文件完整性检查（多页面部署：四个文件缺一不可）
+MISSING=""
+[ -f "$SERVER_JS" ] || MISSING="$MISSING
+  - server/server.js（后端）"
+[ -f "$HTML_FILE" ] || MISSING="$MISSING
+  - 合成大吕布-掉落版.html（掉落版游戏）"
+[ -f "$APP_DIR/index.html" ] || MISSING="$MISSING
+  - index.html（主页）"
+[ -f "$APP_DIR/合成大吕布.html" ] || MISSING="$MISSING
+  - 合成大吕布.html（999挑战）"
+if [ -n "$MISSING" ]; then
+  echo "❌ 以下文件缺失:$MISSING"
+  echo "   请按部署手册的清单把文件补传后重试"
   exit 1
 fi
 
