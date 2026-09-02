@@ -479,9 +479,9 @@
     curIdx = nextIdx;
     nextIdx = poolNext();
     $('nextIcon').innerHTML = iconImg(nextIdx, 20);
-    // 按操作步数自动存档：每 AUTO_SAVE_EVERY 步保存一次
+    // 按操作步数自动存档：每 AUTO_SAVE_EVERY 步保存一次（静默进行，不打扰玩家）
     if (dropsCount % AUTO_SAVE_EVERY === 0 && dropsCount > 0) {
-      pushSnapshot('auto').then(ok => { if (ok) toast('☁ 已自动存档'); });
+      pushSnapshot('auto');
     }
   }
 
