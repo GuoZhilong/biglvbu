@@ -1,13 +1,13 @@
-// 端到端客户端测试：双存档槽（自动每3步 + 手动按钮）+ 主动读档面板
-// 用法: node client-restore-test.js
+// 端到端客户端测试：双存档槽 + 主动读档面板 + 死亡线判定公平性
+// 用法: node client-restore-test.js [main|fastdrop|overline]
 'use strict';
 const fs = require('fs');
 const path = require('path');
 const { JSDOM } = require('jsdom');
 
+const scenario = process.argv[2] || 'main';
 const html = fs.readFileSync(path.join(__dirname, '..', '合成大吕布-掉落版.html'), 'utf8');
 
-// 内存版存档服务器
 const store = { auto: null, manual: null };
 let confirmCalls = 0;
 const hooks = { bodies: 0, updates: 0, lastFruitPos: null };
@@ -65,6 +65,7 @@ const dom = new JSDOM(html, {
         const origAdd = v.Composite.add.bind(v.Composite);
         v.Composite.add = (w, b) => {
           const arr = Array.isArray(b) ? b : [b];
+          window.__world = w;                       // 任何 add 都捕获 world（含建墙）
           for (const x of arr) {
             if (x.label === 'fruit') {
               hooks.bodies++;
@@ -95,52 +96,82 @@ async function dropBall(clientX) {
   canvas.dispatchEvent(new window.MouseEvent('pointerup', { bubbles: true, clientX, clientY: 300 }));
 }
 
-(async () => {
-  // 1. 启动后：无弹窗、无自动恢复、棋盘为空
+async function scenarioMain() {
+  // 启动后：无弹窗、无自动恢复、棋盘为空
   await sleep(1500);
-  check('启动无 confirm 弹窗', confirmCalls === 0);
-  check('启动不自动恢复（棋盘空）', hooks.bodies === 0);
-  check('主循环存活', hooks.updates > 0);
+  check('[main] 启动无 confirm 弹窗', confirmCalls === 0);
+  check('[main] 启动不自动恢复（棋盘空）', hooks.bodies === 0);
+  check('[main] 主循环存活', hooks.updates > 0);
 
-  // 2. 落 3 步 → 触发自动存档
+  // 落 3 步 → 触发自动存档
   await dropBall(100); await sleep(700);
   await dropBall(200); await sleep(700);
-  await dropBall(300); await sleep(900);   // 第 3 步触发 /api/autosave
-  check('3 步后触发自动存档', !!store.auto);
-  check('自动存档含 3 个武将', store.auto && store.auto.pieces.length === 3);
-  check('存档坐标均为有效数字', store.auto && store.auto.pieces.every(p => Number.isFinite(p.x) && Number.isFinite(p.y)));
+  await dropBall(300); await sleep(900);
+  check('[main] 3 步后触发自动存档', !!store.auto);
+  check('[main] 自动存档含 3 个武将', store.auto && store.auto.pieces.length === 3);
+  check('[main] 存档坐标均为有效数字', store.auto && store.auto.pieces.every(p => Number.isFinite(p.x) && Number.isFinite(p.y)));
 
-  // 3. 手动存档
+  // 手动存档
   $('saveBtn').click();
   await sleep(500);
-  check('💾 按钮触发手动存档', !!store.manual);
+  check('[main] 💾 按钮触发手动存档', !!store.manual);
 
-  // 4. 打开读档面板
+  // 读档面板
   $('loadBtn').click();
   await sleep(400);
-  check('📂 打开存档面板', $('slotOverlay').classList.contains('show'));
-  check('面板显示自动存档信息', $('autoInfo').textContent.includes('个武将'));
+  check('[main] 📂 打开存档面板', $('slotOverlay').classList.contains('show'));
+  check('[main] 面板显示自动存档信息', $('autoInfo').textContent.includes('个武将'));
 
-  // 5. 恢复手动存档（覆盖当前局面）
+  // 恢复手动存档
   const addsBefore = hooks.bodies;
   $('restoreManual').click();
   await sleep(600);
-  check('读档面板自动关闭', !$('slotOverlay').classList.contains('show'));
-  check('恢复重建了棋面（+3 球）', hooks.bodies === addsBefore + 3);
-  check('恢复坐标有效', hooks.lastFruitPos && Number.isFinite(hooks.lastFruitPos.x) && Number.isFinite(hooks.lastFruitPos.y));
+  check('[main] 读档面板自动关闭', !$('slotOverlay').classList.contains('show'));
+  check('[main] 恢复重建了棋面（+3 球）', hooks.bodies === addsBefore + 3);
+  check('[main] 恢复坐标有效', hooks.lastFruitPos && Number.isFinite(hooks.lastFruitPos.x) && Number.isFinite(hooks.lastFruitPos.y));
 
-  // 6. 删除自动存档（走 confirm）
+  // 删除自动存档
   $('loadBtn').click();
   await sleep(300);
   $('delAuto').click();
   await sleep(700);
-  check('删除自动存档走 confirm', confirmCalls >= 1);
-  check('删除后自动槽为空', store.auto === null);
-  check('面板显示（空）', $('autoInfo').textContent.includes('空'));
+  check('[main] 删除自动存档走 confirm', confirmCalls >= 1);
+  check('[main] 删除后自动槽为空', store.auto === null);
+  check('[main] 面板显示（空）', $('autoInfo').textContent.includes('空'));
 
-  check('全程零 JS 错误', errors.length === 0);
+  check('[main] 全程零 JS 错误', errors.length === 0);
+}
 
+async function scenarioFastdrop() {
+  // 快速连点 3 球（同一落点），球堆未达警戒线：不允许误判失败
+  await sleep(1200);
+  await dropBall(210); await sleep(620);
+  await dropBall(210); await sleep(620);
+  await dropBall(210); await sleep(2500);
+  check('[fastdrop] 主循环存活', hooks.updates > 0);
+  check('[fastdrop] 快速连点未误判失败', !$('resultOverlay').classList.contains('show'));
+  check('[fastdrop] 零 JS 错误', errors.length === 0);
+}
+
+async function scenarioOverline() {
+  // 静态平台托住一个球持续停在警戒线上方：豁免期结束后必须正常判负
+  await sleep(1500);
+  const M = window.__M, w = window.__world;
+  M.Composite.add(w, M.Bodies.rectangle(210, 100, 300, 20, { isStatic: true, label: 'wall' }));
+  const bb = M.Bodies.circle(210, 62, 28, { label: 'fruit', restitution: 0.15, friction: 0.4 });
+  bb.plugin = { lvl: 3, aboveSince: null, born: performance.now() };
+  M.Composite.add(w, bb);
+  hooks.bodies++;
+  await sleep(4500);   // 1s 年龄门槛 + 1.5s 判线窗口
+  check('[overline] 持续超线的落定球被判负', $('resultOverlay').classList.contains('show'));
+  check('[overline] 零 JS 错误', errors.length === 0);
+}
+
+(async () => {
+  if (scenario === 'fastdrop') await scenarioFastdrop();
+  else if (scenario === 'overline') await scenarioOverline();
+  else await scenarioMain();
   const pass = results.every(r => r[1]);
-  console.log(pass ? '=== 全部通过 ===' : '=== 存在失败项 ===');
+  console.log(pass ? `=== [${scenario}] 全部通过 ===` : `=== [${scenario}] 存在失败项 ===`);
   process.exit(pass ? 0 : 1);
 })().catch(e => { console.error('HARNESS FAIL:', e); process.exit(1); });

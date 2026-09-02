@@ -475,6 +475,10 @@
       if (b.label !== 'fruit' || b.isStatic) continue;
       if (b.position.y - FRUITS[b.plugin.lvl].r < LINE_Y) {
         if (grace) continue;                       // 豁免期内只看不判
+        // 只判"已落定"的球：刚出生（还在下落穿过警戒线）或仍在弹跳/滚动的球不判，
+        // 避免快速连点时球砸在堆顶弹跳期间被误判失败。等它速度衰减到静止再计时。
+        const age = now - b.plugin.born;
+        if (age < 1000 || b.speed > 0.35) { b.plugin.aboveSince = null; continue; }
         danger = true;
         if (b.plugin.aboveSince === null) b.plugin.aboveSince = now;
         else if (now - b.plugin.aboveSince > LOSE_MS) { gameOver(); return; }
