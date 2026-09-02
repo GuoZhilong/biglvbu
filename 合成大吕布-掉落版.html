@@ -752,13 +752,27 @@
   try { totalGames = +localStorage.getItem('lvbu_drop_games') || 0; } catch (e) {}
   try { lifeMaxLv = +localStorage.getItem('lvbu_drop_maxlv') || 0; } catch (e) {}
 
-  function saveAuth() { try { localStorage.setItem(AUTH_KEY, JSON.stringify(auth)); } catch (e) {} }
+  function saveAuth() {
+    try {
+      if (auth) localStorage.setItem(AUTH_KEY, JSON.stringify(auth));
+      else localStorage.removeItem(AUTH_KEY);
+    } catch (e) {}
+  }
 
   async function api(path, body, method) {
     const opt = { method: method || 'POST', headers: { 'Content-Type': 'application/json' } };
     if (auth && auth.token) opt.headers['Authorization'] = 'Bearer ' + auth.token;
     if (body) opt.body = JSON.stringify(body);
     const r = await fetch('/api' + path, opt);
+    if (r.status === 401) {
+      // 令牌过期/失效：清掉本地登录态，把静默失败变成可见提示
+      if (auth) {
+        auth = null; saveAuth(); updateAcctBtn();
+        toast('登录已过期，请重新登录后再同步');
+        refreshSide();
+      }
+      throw new Error('登录已过期，请重新登录');
+    }
     const data = await r.json().catch(() => ({ error: '服务异常，请稍后再试' }));
     if (!r.ok) throw new Error(data.error || ('HTTP ' + r.status));
     return data;
@@ -1064,7 +1078,9 @@
       }
       auth.best = p.best; saveAuth();
       refreshSide();
-    } catch (e) {}
+    } catch (e) {
+      if (auth) scoreDirty = true;   // 非 401 的临时失败 → 下个周期重试
+    }
   }
 
   setInterval(refreshSide, 10000);   // 榜单每 10 秒自动刷新

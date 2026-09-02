@@ -39,14 +39,22 @@ const dom = new JSDOM(html, {
     window.matchMedia = q => ({ matches: false, addListener() {}, removeListener() {} });
     Object.defineProperty(window.HTMLElement.prototype, 'offsetParent', { get() { return {}; }, configurable: true });
     window.confirm = () => { confirmCalls++; return true; };
-    const json = data => Promise.resolve({ ok: true, json: () => Promise.resolve(data) });
+    const failAuth = scenario === 'stale';   // 模拟服务端令牌全部失效
+    const json = (data, status = 200) => Promise.resolve({ ok: status < 400, status, json: () => Promise.resolve(data) });
     window.fetch = (url, opts) => {
       url = String(url);
       const body = opts && opts.body ? JSON.parse(opts.body) : {};
+      if (failAuth && (url.endsWith('/api/me') || url.endsWith('/api/save'))) {
+        return json({ error: 'unauthorized' }, 401);
+      }
       if (url.endsWith('/api/save')) { saveCalls.push(body); return json({ ok: true, best: 999, maxLevel: 3, games: 2, rank: 1 }); }
       if (url.endsWith('/api/leaderboard')) {
         lbCalls.push(1);
-        return json({ top: [{ rank: 1, name: '测试玩家', best: 999, maxLevel: 3, games: 2 }], me: { rank: 1, name: '测试玩家', best: 999, maxLevel: 3 } });
+        // 真实服务端：me 由 Authorization 头有效性决定，失效令牌返回 me=null
+        return json({
+          top: [{ rank: 1, name: '测试玩家', best: 999, maxLevel: 3, games: 2 }],
+          me: failAuth ? null : { rank: 1, name: '测试玩家', best: 999, maxLevel: 3 },
+        });
       }
       if (url.endsWith('/api/autosave')) {
         store.auto = { ...body.snapshot, savedAt: new Date().toISOString() };
@@ -205,10 +213,38 @@ async function scenarioSidelb() {
   check('[sidelb] 零 JS 错误', errors.length === 0);
 }
 
+async function scenarioMergedirty() {
+  // 真实合成路径：恢复含两枚相邻同级武将的存档 → 物理合成 → 分数变化 → 5 秒内上报
+  await sleep(1500);
+  store.manual = {
+    score: 0, dropsCount: 2, curIdx: 2, nextIdx: 3, lvbuCount: 0,
+    savedAt: new Date().toISOString(),
+    pieces: [{ lvl: 1, x: 210, y: 600 }, { lvl: 1, x: 210, y: 566 }],   // r18 相邻重叠 → 必然合成
+  };
+  $('loadBtn').click(); await sleep(300);
+  $('restoreManual').click();
+  await sleep(5600);   // 覆盖合成发生 + 5s 上报窗口
+  check('[mergedirty] 合成发生且分数上涨', $('score').textContent === '6');
+  check('[mergedirty] 合成触发实时上报', saveCalls.some(c => c.score === 6));
+  check('[mergedirty] 侧栏显示我的排名', $('sideMe').textContent.includes('第 1 名'));
+  check('[mergedirty] 零 JS 错误', errors.length === 0);
+}
+
+async function scenarioStale() {
+  // 过期令牌：/api/me 与 /api/save 返回 401 → 前端必须清登录态并可见提示，而不是静默失败
+  await sleep(1500);
+  check('[stale] 启动时过期令牌被清除', window.localStorage.getItem('lvbu_drop_auth') === null);
+  check('[stale] 账号按钮回到未登录', $('acctBtn').textContent.includes('未登录'));
+  check('[stale] 侧栏提示登录后上榜', $('sideMe').textContent.includes('登录后'));
+  check('[stale] 零 JS 错误（401 已被处理为正常流程）', errors.length === 0);
+}
+
 (async () => {
   if (scenario === 'fastdrop') await scenarioFastdrop();
   else if (scenario === 'overline') await scenarioOverline();
   else if (scenario === 'sidelb') await scenarioSidelb();
+  else if (scenario === 'mergedirty') await scenarioMergedirty();
+  else if (scenario === 'stale') await scenarioStale();
   else await scenarioMain();
   const pass = results.every(r => r[1]);
   console.log(pass ? `=== [${scenario}] 全部通过 ===` : `=== [${scenario}] 存在失败项 ===`);
