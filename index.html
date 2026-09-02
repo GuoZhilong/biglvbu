@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>吕布游戏厅</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; user-select:none; -webkit-user-select:none; }
+  html,body { min-height:100%; }
+  body {
+    font-family:"PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+    background:
+      radial-gradient(80% 50% at 20% 0%, rgba(255,214,140,.55), transparent 60%),
+      radial-gradient(70% 60% at 85% 15%, rgba(255,150,120,.35), transparent 55%),
+      radial-gradient(90% 70% at 50% 110%, rgba(150,205,255,.35), transparent 60%),
+      linear-gradient(180deg,#fff6e6,#ffe9cd 55%,#ffe0c0);
+    color:#5a3a20;
+    min-height:100vh;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    padding:30px 16px;
+  }
+  .hero { text-align:center; margin-bottom:34px; }
+  .hero h1 {
+    font-size:clamp(30px,6vw,46px); letter-spacing:6px; color:#fff;
+    text-shadow:0 3px 10px rgba(200,90,20,.45), 0 1px 0 #ff9d4d;
+  }
+  .hero .trident { font-size:clamp(40px,7vw,58px); display:block; margin-bottom:6px;
+    filter:drop-shadow(0 4px 10px rgba(200,90,20,.4)); }
+  .hero p { margin-top:10px; font-size:14.5px; color:#8a6a48; letter-spacing:2px; }
+
+  .games { display:flex; gap:30px; flex-wrap:wrap; justify-content:center; }
+  .game-card {
+    width:318px; padding:30px 26px 26px;
+    background:linear-gradient(180deg,#fffdf8,#fff3e0);
+    border:1px solid #ffcf96; border-radius:22px;
+    box-shadow:0 10px 30px rgba(230,120,40,.22);
+    text-align:center;
+    transition:transform .2s, box-shadow .2s;
+  }
+  .game-card:hover { transform:translateY(-6px); box-shadow:0 18px 40px rgba(230,120,40,.3); }
+  .game-card .icon { font-size:56px; line-height:1.15;
+    filter:drop-shadow(0 3px 6px rgba(200,90,20,.3)); }
+  .game-card h2 { margin:12px 0 10px; font-size:20px; letter-spacing:2px; color:#d0490f; }
+  .game-card p { font-size:13px; line-height:1.85; color:#8a6a48; min-height:96px; }
+  .game-card .best {
+    margin:12px 0 16px; font-size:12px; color:#a07840;
+    background:#fff8ec; border:1px dashed #ffcf96; border-radius:9px; padding:6px 10px;
+  }
+  .game-card .best b { color:#d0490f; }
+  .play {
+    display:block; padding:12px; border-radius:12px;
+    background:linear-gradient(180deg,#ff9d4d,#f5762b); color:#fff;
+    font-size:16px; font-weight:800; letter-spacing:3px;
+    text-decoration:none; box-shadow:0 5px 14px rgba(245,120,45,.4);
+    transition:.15s;
+  }
+  .play:hover { background:linear-gradient(180deg,#ffab63,#ff8540); }
+  .play:active { transform:translateY(2px); }
+
+  footer { margin-top:36px; font-size:12px; color:#b08a5a; letter-spacing:1px; }
+
+  @media (max-width: 760px) {
+    .games { flex-direction:column; align-items:center; gap:22px; }
+    .game-card { width:min(92vw,340px); }
+    .game-card p { min-height:0; }
+    body { justify-content:flex-start; padding-top:44px; }
+  }
+</style>
+</head>
+<body>
+  <div class="hero">
+    <span class="trident">🔱</span>
+    <h1>吕布游戏厅</h1>
+    <p>两款合成大吕布 · 选一个开玩</p>
+  </div>
+
+  <div class="games">
+    <div class="game-card">
+      <div class="icon">🔱</div>
+      <h2>掉落版 · 合成大西瓜</h2>
+      <p>物理掉落 × 三国武将。两个相同武将相碰即合而为一，从孙尚香一路合出传说中的大吕布！支持实时排行榜、自动/手动双云存档。</p>
+      <div class="best" id="bestDrop">历史最高分：<b>—</b></div>
+      <a class="play" href="合成大吕布-掉落版.html">开始游戏 →</a>
+    </div>
+    <div class="game-card">
+      <div class="icon">🃏</div>
+      <h2>999 挑战 · 卡牌解谜</h2>
+      <p>9 张手牌、5×5 棋盘。运筹「遗志」「传承」「换帅」，精打细算每 1 级，把场上的吕布推到 999 级！通关解锁自由挑战。</p>
+      <div class="best" id="best999">历史最佳：<b>—</b></div>
+      <a class="play" href="合成大吕布.html">开始游戏 →</a>
+    </div>
+  </div>
+
+  <footer>两局进度都保存在本机浏览器 · 云功能需登录</footer>
+
+<script>
+  try {
+    const d = +localStorage.getItem('lvbu_drop_best') || 0;
+    if (d) document.getElementById('bestDrop').innerHTML = '历史最高分：<b>' + d + '</b>';
+    const n = +localStorage.getItem('lvbu999_best') || 0;
+    if (n) document.getElementById('best999').innerHTML = '历史最佳：<b>' + n + ' 张牌达成</b>';
+  } catch (e) {}
+</script>
+</body>
+</html>

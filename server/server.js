@@ -5,7 +5,7 @@
  *   启动:  node server.js
  *   端口:  默认 8080，可用环境变量 PORT 覆盖
  *   数据:  同目录 users.json（自动创建，含用户与登录令牌）
- *   页面:  托管仓库根目录的 合成大吕布-掉落版.html
+ *   页面:  托管仓库根目录的 index.html（主页）+ 两个游戏页面（白名单）
  *
  * API:
  *   POST /api/register     {name, pass}            → {name, token, best, maxLevel}
@@ -30,7 +30,14 @@ const crypto = require('crypto');
 
 const PORT = Number(process.env.PORT) || 8080;
 const DB_FILE = path.join(__dirname, 'users.json');
-const STATIC_FILE = path.resolve(__dirname, '..', '合成大吕布-掉落版.html');
+const STATIC_DIR = path.resolve(__dirname, '..');
+// 允许托管的静态页面白名单（防路径穿越）
+const STATIC_PAGES = {
+  '/': 'index.html',
+  '/index.html': 'index.html',
+  '/合成大吕布-掉落版.html': '合成大吕布-掉落版.html',
+  '/合成大吕布.html': '合成大吕布.html',
+};
 const MAX_BODY = 10 * 1024;          // 请求体上限
 const SESSION_TTL = 30 * 24 * 3600 * 1000;  // 登录令牌 30 天有效
 
@@ -272,9 +279,9 @@ const routes = {
 };
 
 /* ---------- 静态页面 ---------- */
-function serveStatic(res) {
-  fs.readFile(STATIC_FILE, (err, buf) => {
-    if (err) { send(res, 500, { error: '游戏页面文件缺失' }); return; }
+function serveStatic(res, filename) {
+  fs.readFile(path.join(STATIC_DIR, filename), (err, buf) => {
+    if (err) { send(res, 500, { error: '页面文件缺失: ' + filename }); return; }
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' });
     res.end(buf);
   });
@@ -285,16 +292,19 @@ const server = http.createServer(async (req, res) => {
   const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket.remoteAddress || '?';
   try {
     const url = new URL(req.url, 'http://localhost');
-    const route = routes[req.method + ' ' + url.pathname];
+    // 中文路径会以百分号编码到达，需解码后再匹配白名单
+    let pathname = url.pathname;
+    try { pathname = decodeURIComponent(pathname); } catch (e) {}
+    const route = routes[req.method + ' ' + pathname];
     if (route) {
       if (rateLimited(ip)) return send(res, 429, { error: '请求太频繁，稍后再试' });
       await route(req, res);
       return;
     }
-    if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/index.html')) {
-      return serveStatic(res);
+    if (req.method === 'GET' && STATIC_PAGES[pathname]) {
+      return serveStatic(res, STATIC_PAGES[pathname]);
     }
-    if (url.pathname.startsWith('/api/')) return send(res, 404, { error: '接口不存在' });
+    if (pathname.startsWith('/api/')) return send(res, 404, { error: '接口不存在' });
     res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
     res.end('Not Found');
   } catch (e) {
@@ -306,5 +316,5 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, () => {
   console.log(`合成大吕布·掉落版 服务已启动: http://localhost:${PORT}`);
   console.log(`数据文件: ${DB_FILE}`);
-  console.log(`游戏页面: ${STATIC_FILE}`);
+  console.log(`游戏页面: ${STATIC_DIR} (index.html + 游戏页白名单)`);
 });
