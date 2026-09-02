@@ -60,36 +60,37 @@
   }
   #game { width:100%; height:100%; display:block; touch-action:none; cursor:crosshair; }
 
-  /* ---------- 侧边实时排行榜 ---------- */
+  /* ---------- 侧边实时排行榜（固定在右侧空白处，不参与布局，游戏始终居中） ---------- */
   #sideLb {
-    align-self:center;
-    width:216px; max-height:min(74vh,720px);
+    position:fixed; right:18px; top:50%; transform:translateY(-50%);
+    width:252px; max-height:min(80vh,760px);
     display:flex; flex-direction:column;
     background:linear-gradient(180deg,#fffdf8,#fff4e3);
     border:1px solid #ffcf96; border-radius:16px;
-    box-shadow:0 4px 18px rgba(230,120,40,.18);
-    overflow:hidden;
+    box-shadow:0 6px 24px rgba(230,120,40,.22);
+    overflow:hidden; z-index:20;
   }
   #sideHead { display:flex; align-items:center; gap:6px;
-    padding:10px 12px; font-weight:800; color:#e05a1e; font-size:13.5px;
+    padding:11px 14px; font-weight:800; color:#e05a1e; font-size:14px;
     border-bottom:1px solid #ffe3bf; }
   #sideTitle { flex:1; }
   #sideToggle { border:none; background:rgba(0,0,0,.05); color:#8a6a48; width:22px; height:22px;
     border-radius:6px; cursor:pointer; font-size:13px; line-height:1; flex:0 0 auto; }
-  #sideBody { overflow-y:auto; padding:6px 8px; }
+  #sideBody { overflow-y:auto; padding:6px 10px; }
   #sideList { list-style:none; margin:0; padding:0; }
-  #sideList li { display:flex; align-items:center; gap:6px; padding:5px 4px;
-    border-bottom:1px dashed #f7e6cf; font-size:12px; color:#5a3a20; }
+  #sideList li { display:flex; align-items:center; gap:7px; padding:6px 4px;
+    border-bottom:1px dashed #f7e6cf; font-size:13px; color:#5a3a20; }
   #sideList li:last-child { border-bottom:none; }
   #sideList li.me { background:#fff3e0; border-radius:7px; font-weight:800; color:#d0490f; }
-  #sideList .rk { width:20px; text-align:center; color:#b08a5a; font-weight:700; flex:0 0 auto; }
+  #sideList .rk { width:22px; text-align:center; color:#b08a5a; font-weight:700; flex:0 0 auto; }
   #sideList .nm { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   #sideList .sc { font-weight:800; color:#d0490f; flex:0 0 auto; }
   #sideList li.none { justify-content:center; color:#b08a5a; }
-  #sideMe { padding:8px 10px; font-size:11.5px; color:#7a5330; border-top:1px solid #ffe3bf; }
+  #sideMe { padding:9px 12px; font-size:12px; color:#7a5330; border-top:1px solid #ffe3bf; }
   #sideLb.collapsed { width:auto; }
   #sideLb.collapsed #sideBody, #sideLb.collapsed #sideTitle { display:none; }
-  #sideLb.collapsed #sideHead { border-bottom:none; flex-direction:column; padding:8px 6px; gap:6px; }
+  #sideLb.collapsed #sideHead { border-bottom:none; flex-direction:column; padding:10px 8px; gap:8px; }
+  #sideLb.collapsed #sideEmoji { font-size:18px; }
 
   /* ---------- 合成链 ---------- */
   #chain { display:flex; gap:6px; flex-wrap:nowrap; }
@@ -1036,7 +1037,7 @@
   let sideFetching = false;
   async function refreshSide() {
     if (!IS_ONLINE || sideCollapsed || sideFetching) return;
-    if ($('sideLb').offsetParent === null) return;   // 窄屏隐藏时不请求
+    if (window.matchMedia('(max-width: 1080px)').matches) return;   // 窄屏隐藏时不请求
     sideFetching = true;
     try { renderSide(await api('/leaderboard', null, 'GET')); }
     catch (e) {}

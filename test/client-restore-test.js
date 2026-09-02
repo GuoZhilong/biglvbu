@@ -35,7 +35,8 @@ const dom = new JSDOM(html, {
       return { left: 0, top: 0, width: 420, height: 640, right: 420, bottom: 640, x: 0, y: 0 };
     };
     window.localStorage.setItem('lvbu_drop_auth', JSON.stringify({ name: '测试玩家', token: 'faketoken', best: 0 }));
-    // jsdom 未实现 offsetParent（侧栏可见性判断用），桩一个真值
+    // jsdom 未实现 matchMedia（侧栏窄屏判断用）与 offsetParent，桩之
+    window.matchMedia = q => ({ matches: false, addListener() {}, removeListener() {} });
     Object.defineProperty(window.HTMLElement.prototype, 'offsetParent', { get() { return {}; }, configurable: true });
     window.confirm = () => { confirmCalls++; return true; };
     const json = data => Promise.resolve({ ok: true, json: () => Promise.resolve(data) });
