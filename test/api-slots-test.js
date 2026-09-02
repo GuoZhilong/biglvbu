@@ -30,9 +30,12 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 async function main() {
   // 预置旧版数据（单存档 snapshot 字段），验证迁移
   fs.writeFileSync(DB_FILE, JSON.stringify({
-    'LEGACY01': { name: '老玩家', salt: 'ab', hash: 'cd', best: 1, maxLevel: 1, games: 1,
-      created: '2026-01-01T00:00:00Z', updated: '2026-01-01T00:00:00Z',
-      snapshot: { score: 77, dropsCount: 4, curIdx: 1, nextIdx: 2, lvbuCount: 0, savedAt: '2026-01-01T00:00:00Z', pieces: [{ lvl: 2, x: 100, y: 500 }] } },
+    users: {
+      'LEGACY01': { name: '老玩家', salt: 'ab', hash: 'cd', best: 1, maxLevel: 1, games: 1,
+        created: '2026-01-01T00:00:00Z', updated: '2026-01-01T00:00:00Z',
+        snapshot: { score: 77, dropsCount: 4, curIdx: 1, nextIdx: 2, lvbuCount: 0, savedAt: '2026-01-01T00:00:00Z', pieces: [{ lvl: 2, x: 100, y: 500 }] } },
+    },
+    sessions: {},
   }));
 
   const server = spawn('node', [path.join(__dirname, '..', 'server', 'server.js')], {
@@ -83,7 +86,7 @@ async function main() {
 
     // 旧版迁移：用 LEGACY 账号验证（直接改密码哈希不可行，改用数据库直查 + autosave 迁移路径）
     const db = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
-    check('旧版 snapshot 字段仍存在（未被误删，等该用户 autosave 时迁移）', !!db['LEGACY01'].snapshot);
+    check('旧版 snapshot 字段仍存在（未被误删，等该用户 autosave 时迁移）', !!db.users['LEGACY01'].snapshot);
 
     // 非法 slot 拦截
     r = await req('POST', '/api/snapshot/clear', { slot: 'hack' }, token);
