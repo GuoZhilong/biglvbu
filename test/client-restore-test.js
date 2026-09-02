@@ -12,6 +12,8 @@ const store = { auto: null, manual: null };
 let confirmCalls = 0;
 const hooks = { bodies: 0, updates: 0, lastFruitPos: null };
 const errors = [];
+const saveCalls = [];     // 记录 /api/save 上报内容
+const lbCalls = [];       // 记录排行榜拉取次数
 
 const dom = new JSDOM(html, {
   runScripts: 'dangerously',
@@ -33,11 +35,18 @@ const dom = new JSDOM(html, {
       return { left: 0, top: 0, width: 420, height: 640, right: 420, bottom: 640, x: 0, y: 0 };
     };
     window.localStorage.setItem('lvbu_drop_auth', JSON.stringify({ name: '测试玩家', token: 'faketoken', best: 0 }));
+    // jsdom 未实现 offsetParent（侧栏可见性判断用），桩一个真值
+    Object.defineProperty(window.HTMLElement.prototype, 'offsetParent', { get() { return {}; }, configurable: true });
     window.confirm = () => { confirmCalls++; return true; };
     const json = data => Promise.resolve({ ok: true, json: () => Promise.resolve(data) });
     window.fetch = (url, opts) => {
       url = String(url);
       const body = opts && opts.body ? JSON.parse(opts.body) : {};
+      if (url.endsWith('/api/save')) { saveCalls.push(body); return json({ ok: true, best: 999, maxLevel: 3, games: 2, rank: 1 }); }
+      if (url.endsWith('/api/leaderboard')) {
+        lbCalls.push(1);
+        return json({ top: [{ rank: 1, name: '测试玩家', best: 999, maxLevel: 3, games: 2 }], me: { rank: 1, name: '测试玩家', best: 999, maxLevel: 3 } });
+      }
       if (url.endsWith('/api/autosave')) {
         store.auto = { ...body.snapshot, savedAt: new Date().toISOString() };
         return json({ ok: true });
@@ -167,9 +176,38 @@ async function scenarioOverline() {
   check('[overline] 零 JS 错误', errors.length === 0);
 }
 
+async function scenarioSidelb() {
+  // 侧边实时排行榜：渲染、折叠、实时上报（读档后 5 秒内 /api/save）
+  await sleep(1500);
+  check('[sidelb] 侧栏存在且展开', !!window.document.getElementById('sideLb') && !$('sideLb').classList.contains('collapsed'));
+  check('[sidelb] 初始化拉取了排行榜', lbCalls.length >= 1);
+  check('[sidelb] 空榜显示虚位以待', $('sideList').textContent.includes('虚位以待') || $('sideList').textContent.includes('测试玩家'));
+
+  // 折叠/展开 + 状态持久化
+  $('sideToggle').click();
+  await sleep(200);
+  check('[sidelb] 点击后折叠', $('sideLb').classList.contains('collapsed'));
+  check('[sidelb] 折叠状态持久化', window.localStorage.getItem('lvbu_side') === '1');
+  $('sideToggle').click();
+  await sleep(200);
+  check('[sidelb] 再次点击展开', !$('sideLb').classList.contains('collapsed'));
+
+  // 实时上报：预置一份高分手动存档 → 读档 → 分数变化 → 5 秒内 /api/save
+  store.manual = { score: 555, dropsCount: 3, curIdx: 1, nextIdx: 2, lvbuCount: 0, savedAt: new Date().toISOString(), pieces: [{ lvl: 0, x: 100, y: 600 }] };
+  $('loadBtn').click();
+  await sleep(400);
+  $('restoreManual').click();
+  await sleep(5600);   // 覆盖 5s 上报去抖窗口
+  check('[sidelb] 分数变化触发实时上报', saveCalls.some(c => c.score === 555));
+  check('[sidelb] 上报后侧栏显示我的排名', $('sideMe').textContent.includes('第 1 名'));
+  check('[sidelb] 头部分数同步为服务器最高', $('best').textContent === '999');
+  check('[sidelb] 零 JS 错误', errors.length === 0);
+}
+
 (async () => {
   if (scenario === 'fastdrop') await scenarioFastdrop();
   else if (scenario === 'overline') await scenarioOverline();
+  else if (scenario === 'sidelb') await scenarioSidelb();
   else await scenarioMain();
   const pass = results.every(r => r[1]);
   console.log(pass ? `=== [${scenario}] 全部通过 ===` : `=== [${scenario}] 存在失败项 ===`);

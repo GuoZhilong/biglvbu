@@ -60,6 +60,37 @@
   }
   #game { width:100%; height:100%; display:block; touch-action:none; cursor:crosshair; }
 
+  /* ---------- 侧边实时排行榜 ---------- */
+  #sideLb {
+    align-self:center;
+    width:216px; max-height:min(74vh,720px);
+    display:flex; flex-direction:column;
+    background:linear-gradient(180deg,#fffdf8,#fff4e3);
+    border:1px solid #ffcf96; border-radius:16px;
+    box-shadow:0 4px 18px rgba(230,120,40,.18);
+    overflow:hidden;
+  }
+  #sideHead { display:flex; align-items:center; gap:6px;
+    padding:10px 12px; font-weight:800; color:#e05a1e; font-size:13.5px;
+    border-bottom:1px solid #ffe3bf; }
+  #sideTitle { flex:1; }
+  #sideToggle { border:none; background:rgba(0,0,0,.05); color:#8a6a48; width:22px; height:22px;
+    border-radius:6px; cursor:pointer; font-size:13px; line-height:1; flex:0 0 auto; }
+  #sideBody { overflow-y:auto; padding:6px 8px; }
+  #sideList { list-style:none; margin:0; padding:0; }
+  #sideList li { display:flex; align-items:center; gap:6px; padding:5px 4px;
+    border-bottom:1px dashed #f7e6cf; font-size:12px; color:#5a3a20; }
+  #sideList li:last-child { border-bottom:none; }
+  #sideList li.me { background:#fff3e0; border-radius:7px; font-weight:800; color:#d0490f; }
+  #sideList .rk { width:20px; text-align:center; color:#b08a5a; font-weight:700; flex:0 0 auto; }
+  #sideList .nm { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #sideList .sc { font-weight:800; color:#d0490f; flex:0 0 auto; }
+  #sideList li.none { justify-content:center; color:#b08a5a; }
+  #sideMe { padding:8px 10px; font-size:11.5px; color:#7a5330; border-top:1px solid #ffe3bf; }
+  #sideLb.collapsed { width:auto; }
+  #sideLb.collapsed #sideBody, #sideLb.collapsed #sideTitle { display:none; }
+  #sideLb.collapsed #sideHead { border-bottom:none; flex-direction:column; padding:8px 6px; gap:6px; }
+
   /* ---------- 合成链 ---------- */
   #chain { display:flex; gap:6px; flex-wrap:nowrap; }
   .ch-item {
@@ -138,6 +169,7 @@
     .ch-item { flex:0 0 auto; width:38px; padding:3px 0; }
     .ch-item .e img { width:15px !important; height:15px !important; }
     .ch-item .n { font-size:8px; }
+    #sideLb { display:none; }   /* 窄屏收起侧栏，用「🏆 排行榜」弹窗 */
   }
 
   /* ---------- 遮罩 & 弹窗 ---------- */
@@ -190,6 +222,17 @@
     <div id="canvasWrap"><canvas id="game"></canvas></div>
     <div id="chain"></div>
   </div>
+  <aside id="sideLb">
+    <div id="sideHead">
+      <span id="sideEmoji">🏆</span>
+      <span id="sideTitle">实时排行榜</span>
+      <button id="sideToggle" title="折叠 / 展开">»</button>
+    </div>
+    <div id="sideBody">
+      <ol id="sideList"></ol>
+      <div id="sideMe"></div>
+    </div>
+  </aside>
 </main>
 
 <div class="overlay" id="ruleOverlay">
@@ -466,6 +509,7 @@
       }
       $('score').textContent = score;
     }
+    scoreDirty = true;   // 分数变化 → 等待实时上报
   }
 
   function checkDanger(now) {
@@ -515,6 +559,7 @@
       }
       auth.best = p.best;
       saveAuth();
+      refreshSide();
       $('resultDesc').innerHTML += `<br><span style="color:#2e7d32">☁ 已同步` +
         (p.rank ? `，当前排行榜第 <b>${p.rank}</b> 名` : '') + `</span>`;
     }).catch(() => {
@@ -959,6 +1004,70 @@
   $('delAuto').addEventListener('click', () => deleteSlot('auto'));
   $('delManual').addEventListener('click', () => deleteSlot('manual'));
 
+  /* ---------- 侧边实时排行榜 ---------- */
+  let sideCollapsed = false;
+  try { sideCollapsed = localStorage.getItem('lvbu_side') === '1'; } catch (e) {}
+  function applySide() {
+    const el = $('sideLb');
+    el.classList.toggle('collapsed', sideCollapsed);
+    $('sideToggle').textContent = sideCollapsed ? '«' : '»';
+    if (!sideCollapsed) refreshSide();
+  }
+  $('sideToggle').addEventListener('click', () => {
+    sideCollapsed = !sideCollapsed;
+    try { localStorage.setItem('lvbu_side', sideCollapsed ? '1' : '0'); } catch (e) {}
+    applySide();
+  });
+
+  function renderSide(data) {
+    const list = $('sideList');
+    if (!data || !data.top || !data.top.length) {
+      list.innerHTML = '<li class="none">虚位以待</li>';
+    } else {
+      const myRank = data.me ? data.me.rank : null;
+      list.innerHTML = data.top.slice(0, 10).map(u =>
+        `<li class="${myRank === u.rank ? 'me' : ''}"><span class="rk">${u.rank}</span><span class="nm">${esc(u.name)}</span><span class="sc">${u.best}</span></li>`).join('');
+    }
+    $('sideMe').textContent = data && data.me
+      ? `我：第 ${data.me.rank} 名 · ${data.me.best} 分`
+      : (auth ? '合成一次即可上榜' : '登录后实时上榜');
+  }
+
+  let sideFetching = false;
+  async function refreshSide() {
+    if (!IS_ONLINE || sideCollapsed || sideFetching) return;
+    if ($('sideLb').offsetParent === null) return;   // 窄屏隐藏时不请求
+    sideFetching = true;
+    try { renderSide(await api('/leaderboard', null, 'GET')); }
+    catch (e) {}
+    sideFetching = false;
+  }
+
+  // 实时上榜：合成分数变化后，5 秒内去抖上报一次
+  let scoreDirty = false;
+  setInterval(() => {
+    if (scoreDirty && auth && IS_ONLINE && status === 'playing') {
+      scoreDirty = false;
+      pushScore();
+    }
+  }, 5000);
+
+  async function pushScore() {
+    if (!auth || !IS_ONLINE) return;
+    try {
+      const p = await api('/save', { score, maxLevel: lifeMaxLv, games: totalGames });
+      if (p.best > best) {
+        best = p.best;
+        $('best').textContent = best;
+        try { localStorage.setItem('lvbu_drop_best', String(best)); } catch (e) {}
+      }
+      auth.best = p.best; saveAuth();
+      refreshSide();
+    } catch (e) {}
+  }
+
+  setInterval(refreshSide, 10000);   // 榜单每 10 秒自动刷新
+
   // 重建棋面：忠实还原快照坐标（只做边界钳制）。
   // 实测证明：把静止的球按重叠坐标放回，Matter.js 的解压是温和的（瞬时球速 <2px/步，
   // 无逃逸无 NaN），会自然"舒展"回合理堆叠；不要自作聪明重排——重排会把横向铺开的
@@ -976,6 +1085,7 @@
     }
     score = s.score; dropsCount = s.dropsCount;
     curIdx = s.curIdx; nextIdx = s.nextIdx; lvbuCount = s.lvbuCount;
+    scoreDirty = true;                             // 读档后的分数也要参与实时上报
     if (lvbuCount > 0) { $('lvbuTag').style.display = 'inline-block'; $('lvbuCount').textContent = lvbuCount; }
     $('score').textContent = score;
     $('nextIcon').innerHTML = iconImg(nextIdx, 20);
@@ -1000,6 +1110,7 @@
   buildChain();
   restart();
   requestAnimationFrame(loop);
+  applySide();   // 初始化侧边实时排行榜（折叠状态 + 首次拉取）
 })();
 </script>
 </body>
