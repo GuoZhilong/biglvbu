@@ -1,43 +1,17 @@
-// 端到端客户端测试：模拟"第二次打开页面 → 恢复存档 → 点击落球"
-// 用 jsdom 跑真实游戏代码，通过 Matter 陷阱观察物理世界状态
-// 用法: node client-restore-test.js [normal|overline]
+// 端到端客户端测试：双存档槽（自动每3步 + 手动按钮）+ 主动读档面板
+// 用法: node client-restore-test.js
 'use strict';
 const fs = require('fs');
 const path = require('path');
 const { JSDOM } = require('jsdom');
 
-const scenario = process.argv[2] || 'normal';
 const html = fs.readFileSync(path.join(__dirname, '..', '合成大吕布-掉落版.html'), 'utf8');
 
-// 模拟一个"被挤压保存"的存档：25 个球纵向间距 18px（远小于半径和，深度重叠）
-function makePieces() {
-  if (scenario === 'overline') {
-    // 从地面密堆到警戒线上方的宽棋盘（相邻球等级交错、不会互合成，物理稳定）
-    // 顶行球顶边 ~96 < LINE_Y=130 → 豁免期结束后应被判负
-    const pieces = [];
-    const step = 56.4, rowH = step * Math.sqrt(3) / 2;
-    for (let k = 0; k <= 10; k++) {
-      const y = 612 - rowH * k;
-      const off = k % 2 ? step / 2 : 0;
-      for (let x = 28.2 + off; x <= 392; x += step) {
-        pieces.push({ lvl: (Math.round(x / step) + k) % 2 ? 3 : 4, x, y });
-      }
-    }
-    return pieces;
-  }
-  const levels = '0123401203102410230120123'.split('');
-  return levels.map((lvl, i) => ({ lvl: +lvl, x: 40 + (i % 9) * 40, y: 620 - Math.floor(i / 9) * 18 }));
-}
-
-const snap = {
-  snapshot: {
-    score: 123, dropsCount: 8, curIdx: 2, nextIdx: 3, lvbuCount: 0,
-    savedAt: new Date().toISOString(), pieces: makePieces(),
-  },
-};
-
+// 内存版存档服务器
+const store = { auto: null, manual: null };
+let confirmCalls = 0;
+const hooks = { bodies: 0, updates: 0, lastFruitPos: null };
 const errors = [];
-const hooks = { bodies: 0, updates: 0, removes: 0 };
 
 const dom = new JSDOM(html, {
   runScripts: 'dangerously',
@@ -55,16 +29,31 @@ const dom = new JSDOM(html, {
         set: () => true,
       });
     };
+    window.HTMLCanvasElement.prototype.getBoundingClientRect = function () {
+      return { left: 0, top: 0, width: 420, height: 640, right: 420, bottom: 640, x: 0, y: 0 };
+    };
     window.localStorage.setItem('lvbu_drop_auth', JSON.stringify({ name: '测试玩家', token: 'faketoken', best: 0 }));
-    window.confirm = () => true;
-    window.fetch = (url) => {
-      if (String(url).endsWith('/api/snapshot')) {
-        return Promise.resolve({ ok: true, json: () => Promise.resolve(snap) });
+    window.confirm = () => { confirmCalls++; return true; };
+    const json = data => Promise.resolve({ ok: true, json: () => Promise.resolve(data) });
+    window.fetch = (url, opts) => {
+      url = String(url);
+      const body = opts && opts.body ? JSON.parse(opts.body) : {};
+      if (url.endsWith('/api/autosave')) {
+        store.auto = { ...body.snapshot, savedAt: new Date().toISOString() };
+        return json({ ok: true });
       }
-      if (String(url).endsWith('/api/me')) {
-        return Promise.resolve({ ok: true, json: () => Promise.resolve({ name: '测试玩家', best: 0, maxLevel: 0, games: 0 }) });
+      if (url.endsWith('/api/manualsave')) {
+        store.manual = { ...body.snapshot, savedAt: new Date().toISOString() };
+        return json({ ok: true });
       }
-      return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true }) });
+      if (url.endsWith('/api/snapshots')) return json({ auto: store.auto, manual: store.manual });
+      if (url.endsWith('/api/snapshot/clear')) {
+        if (body.slot === 'manual' || body.slot === 'all') store.manual = null;
+        if (body.slot === 'auto' || body.slot === 'all') store.auto = null;
+        return json({ ok: true });
+      }
+      if (url.endsWith('/api/me')) return json({ name: '测试玩家', best: 0, maxLevel: 0, games: 0 });
+      return json({ ok: true });
     };
     let matter;
     Object.defineProperty(window, 'Matter', {
@@ -76,7 +65,12 @@ const dom = new JSDOM(html, {
         const origAdd = v.Composite.add.bind(v.Composite);
         v.Composite.add = (w, b) => {
           const arr = Array.isArray(b) ? b : [b];
-          for (const x of arr) if (x.label === 'fruit') { hooks.bodies++; window.__world = w; }
+          for (const x of arr) {
+            if (x.label === 'fruit') {
+              hooks.bodies++;
+              hooks.lastFruitPos = { x: x.position.x, y: x.position.y };
+            }
+          }
           return origAdd(w, b);
         };
         const origUpdate = v.Engine.update.bind(v.Engine);
@@ -90,46 +84,63 @@ const dom = new JSDOM(html, {
 
 const { window } = dom;
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+const $ = id => window.document.getElementById(id);
+const results = [];
+const check = (name, ok) => { results.push([name, ok]); console.log((ok ? '✔' : '✘') + ' ' + name); };
+
+async function dropBall(clientX) {
+  const canvas = window.document.getElementById('game');
+  canvas.dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true, clientX, clientY: 300 }));
+  await sleep(30);
+  canvas.dispatchEvent(new window.MouseEvent('pointerup', { bubbles: true, clientX, clientY: 300 }));
+}
 
 (async () => {
-  if (scenario === 'overline') {
-    // 豁免期内注入：静态平台(无法被推走) + 平台上的动态球，球顶 top=34 < LINE_Y=130。
-    // 豁免期结束后该球持续超线 → 必须触发判负。这验证豁免不会永久关闭判定。
-    await sleep(1500);
-    const M = window.__M, w = window.__world;
-    M.Composite.add(w, M.Bodies.rectangle(210, 100, 300, 20, { isStatic: true, label: 'wall' }));
-    const bb = M.Bodies.circle(210, 62, 28, { label: 'fruit', restitution: 0.15, friction: 0.4 });
-    bb.plugin = { lvl: 3, aboveSince: null, born: performance.now() };
-    M.Composite.add(w, bb);
-    hooks.bodies++;
-  }
-  await sleep(4500);   // 覆盖豁免期结束 + 1.5s 判线窗口
-  const $ = id => window.document.getElementById(id);
-  const overShown = $('resultOverlay').classList.contains('show');
-  console.log(`[${scenario}] 物理步进:`, hooks.updates, '| 恢复+合成累计加球:', hooks.bodies, '| resultOverlay:', overShown ? '已弹出' : '未弹出', '| JS错误:', errors.length ? errors : '无');
+  // 1. 启动后：无弹窗、无自动恢复、棋盘为空
+  await sleep(1500);
+  check('启动无 confirm 弹窗', confirmCalls === 0);
+  check('启动不自动恢复（棋盘空）', hooks.bodies === 0);
+  check('主循环存活', hooks.updates > 0);
 
-  let pass = true;
-  if (scenario === 'overline') {
-    // 存档里真有球超线：豁免期(2.5s)+判线(1.5s)后应已判负
-    pass = pass && overShown === true;
-    console.log(`[${scenario}] 预期: 超线球在豁免期后被判负 →`, overShown ? '✔ 正常判负' : '✘ 未判负（豁免逻辑破坏了判定）');
-  } else {
-    // 正常存档：不应误判失败，且能落球
-    pass = pass && overShown === false;
-    console.log(`[${scenario}] 预期: 不弹结算 →`, overShown ? '✘ 误判失败!' : '✔ 未误判');
-    const canvas = window.document.getElementById('game');
-    const down = new window.MouseEvent('pointerdown', { bubbles: true, clientX: 200, clientY: 300 });
-    const up = new window.MouseEvent('pointerup', { bubbles: true, clientX: 200, clientY: 300 });
-    const before = hooks.bodies;
-    canvas.dispatchEvent(down);
-    await sleep(50);
-    canvas.dispatchEvent(up);
-    await sleep(600);
-    const dropped = hooks.bodies === before + 1;
-    console.log(`[${scenario}] 落球:`, dropped ? '✔ 正常' : '✘ 卡住');
-    pass = pass && dropped;
-  }
-  pass = pass && errors.length === 0 && hooks.updates > 0;
-  console.log(`[${scenario}] 结论:`, pass ? '✔✔ 通过' : '✘✘ 失败');
+  // 2. 落 3 步 → 触发自动存档
+  await dropBall(100); await sleep(700);
+  await dropBall(200); await sleep(700);
+  await dropBall(300); await sleep(900);   // 第 3 步触发 /api/autosave
+  check('3 步后触发自动存档', !!store.auto);
+  check('自动存档含 3 个武将', store.auto && store.auto.pieces.length === 3);
+  check('存档坐标均为有效数字', store.auto && store.auto.pieces.every(p => Number.isFinite(p.x) && Number.isFinite(p.y)));
+
+  // 3. 手动存档
+  $('saveBtn').click();
+  await sleep(500);
+  check('💾 按钮触发手动存档', !!store.manual);
+
+  // 4. 打开读档面板
+  $('loadBtn').click();
+  await sleep(400);
+  check('📂 打开存档面板', $('slotOverlay').classList.contains('show'));
+  check('面板显示自动存档信息', $('autoInfo').textContent.includes('个武将'));
+
+  // 5. 恢复手动存档（覆盖当前局面）
+  const addsBefore = hooks.bodies;
+  $('restoreManual').click();
+  await sleep(600);
+  check('读档面板自动关闭', !$('slotOverlay').classList.contains('show'));
+  check('恢复重建了棋面（+3 球）', hooks.bodies === addsBefore + 3);
+  check('恢复坐标有效', hooks.lastFruitPos && Number.isFinite(hooks.lastFruitPos.x) && Number.isFinite(hooks.lastFruitPos.y));
+
+  // 6. 删除自动存档（走 confirm）
+  $('loadBtn').click();
+  await sleep(300);
+  $('delAuto').click();
+  await sleep(700);
+  check('删除自动存档走 confirm', confirmCalls >= 1);
+  check('删除后自动槽为空', store.auto === null);
+  check('面板显示（空）', $('autoInfo').textContent.includes('空'));
+
+  check('全程零 JS 错误', errors.length === 0);
+
+  const pass = results.every(r => r[1]);
+  console.log(pass ? '=== 全部通过 ===' : '=== 存在失败项 ===');
   process.exit(pass ? 0 : 1);
-})();
+})().catch(e => { console.error('HARNESS FAIL:', e); process.exit(1); });

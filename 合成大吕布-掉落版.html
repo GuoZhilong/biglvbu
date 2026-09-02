@@ -110,6 +110,15 @@
     max-width:min(86vw,480px); text-align:center;
   }
   #toastBox.show { opacity:1; transform:translateX(-50%) translateY(0); }
+  /* ---------- 存档槽 ---------- */
+  .slot-card { text-align:left; background:#fff8ec; border:1px solid #f2d3ac; border-radius:12px; padding:12px 14px; margin:10px 0; }
+  .slot-head { font-weight:800; color:#7a5330; font-size:14px; margin-bottom:4px; }
+  .slot-info { font-size:12.5px; color:#7a5330; margin-bottom:8px; min-height:17px; }
+  .slot-btns { display:flex; gap:8px; }
+  .slot-btn { flex:1; padding:7px; border:none; border-radius:8px; font-size:12.5px; font-weight:700; cursor:pointer;
+    background:linear-gradient(180deg,#ff9d4d,#f5762b); color:#fff; }
+  .slot-btn:disabled { background:#e8d9c5; color:#a08a70; cursor:not-allowed; }
+  .slot-btn.ghost2 { background:rgba(0,0,0,.06); color:#8a6a48; }
 
   /* ---------- 手机适配 ---------- */
   @media (max-width: 640px), (max-height: 560px) {
@@ -168,6 +177,8 @@
   <span id="lvbuTag">🔱×<span id="lvbuCount">0</span></span>
   <div class="spacer"></div>
   <button class="hbtn" id="lbBtn">🏆 排行榜</button>
+  <button class="hbtn" id="saveBtn">💾 存档</button>
+  <button class="hbtn" id="loadBtn">📂 读档</button>
   <button class="hbtn" id="acctBtn">👤 未登录</button>
   <button class="hbtn" id="soundBtn">🔊 音效</button>
   <button class="hbtn" id="ruleBtn">📜 规则</button>
@@ -190,6 +201,7 @@
     <div class="r"><b>合成链</b>（共 11 级）：孙尚香 → 蔡文姬 → 曹操 → 赵云 → 刘禅 → 马超 → 貂蝉 → 小乔 → 甄姬 → 周瑜 → 吕布。</div>
     <div class="r"><b>计分</b>：合成第 n 级得 n×(n+1)/2 分，合成大吕布额外 +100。</div>
     <div class="r"><b>失败</b>：场上有武将<b>持续越过顶部红色警戒线</b>约 1.5 秒，游戏结束。</div>
+    <div class="r"><b>云存档</b>：登录后每 <b>3 步</b>（3 次落球）自动存档；「💾 存档」随时手动记录当前局面；「📂 读档」任意时刻恢复（会覆盖当前局面）。</div>
     <div class="r"><b>小技巧</b>：像 2048 一样把大武将排角落、同级相邻放置；耐心等球落定再放下一个；也可以用新球把两个同级武将"挤"到一起。</div>
     <button class="close" onclick="document.getElementById('ruleOverlay').classList.remove('show')">知道了</button>
   </div>
@@ -246,6 +258,30 @@
     <div id="lbBody" class="lb-body">加载中…</div>
     <div class="lb-me" id="lbMe"></div>
     <button class="close" onclick="document.getElementById('lbOverlay').classList.remove('show')">关 闭</button>
+  </div>
+</div>
+
+<div class="overlay" id="slotOverlay">
+  <div class="panel">
+    <h2>📂 存档</h2>
+    <div class="r" id="slotHint"></div>
+    <div class="slot-card">
+      <div class="slot-head">☁️ 自动存档</div>
+      <div class="slot-info" id="autoInfo">加载中…</div>
+      <div class="slot-btns">
+        <button class="slot-btn" id="restoreAuto">恢复此存档</button>
+        <button class="slot-btn ghost2" id="delAuto">删除</button>
+      </div>
+    </div>
+    <div class="slot-card">
+      <div class="slot-head">💾 手动存档</div>
+      <div class="slot-info" id="manualInfo">加载中…</div>
+      <div class="slot-btns">
+        <button class="slot-btn" id="restoreManual">恢复此存档</button>
+        <button class="slot-btn ghost2" id="delManual">删除</button>
+      </div>
+    </div>
+    <button class="close" id="slotCloseBtn">关 闭</button>
   </div>
 </div>
 
@@ -398,6 +434,10 @@
     curIdx = nextIdx;
     nextIdx = poolNext();
     $('nextIcon').innerHTML = iconImg(nextIdx, 20);
+    // 按操作步数自动存档：每 AUTO_SAVE_EVERY 步保存一次
+    if (dropsCount % AUTO_SAVE_EVERY === 0 && dropsCount > 0) {
+      pushSnapshot('auto').then(ok => { if (ok) toast('☁ 已自动存档'); });
+    }
   }
 
   function processMerges() {
@@ -685,6 +725,8 @@
   function updateAcctBtn() { $('acctBtn').textContent = auth ? '👤 ' + auth.name : '👤 未登录'; }
 
   function openAcct() {
+    $('slotOverlay').classList.remove('show');
+    $('lbOverlay').classList.remove('show');
     $('acctOverlay').classList.add('show');
     if (auth) {
       $('profName').textContent = auth.name;
@@ -743,9 +785,6 @@
         api('/save', { score: best, maxLevel: lifeMaxLv, games: totalGames })
           .then(r => { auth.best = r.best; saveAuth(); }).catch(() => {});
       }
-      // 棋面还是全新一局时，检查服务器有无未完成对局
-      const hasRun = Composite.allBodies(world).some(b => b.label === 'fruit') || dropsCount > 0;
-      if (!hasRun) tryRestoreSnapshot();
     } catch (e) { err.textContent = e.message; }
     $('loginBtn').disabled = false;
   });
@@ -758,6 +797,8 @@
   });
 
   $('lbBtn').addEventListener('click', async () => {
+    $('slotOverlay').classList.remove('show');
+    $('acctOverlay').classList.remove('show');
     $('lbOverlay').classList.add('show');
     const body = $('lbBody'), meBox = $('lbMe');
     if (!IS_ONLINE) {
@@ -799,7 +840,8 @@
     }).catch(() => {});
   }
 
-  /* ---------- 单局中途云存档 ---------- */
+  /* ---------- 云存档：自动槽（每 N 步）+ 手动槽 ---------- */
+  const AUTO_SAVE_EVERY = 3;        // 每落球 3 步自动存档一次
   let snapshotBusy = false;
 
   function captureSnapshot() {
@@ -812,34 +854,106 @@
     return { pieces, score, dropsCount, curIdx, nextIdx, lvbuCount };
   }
 
-  async function pushSnapshot() {
-    if (!auth || !IS_ONLINE || status !== 'playing' || snapshotBusy) return;
+  async function pushSnapshot(slot) {
+    if (!auth || !IS_ONLINE || snapshotBusy) return false;
     const snap = captureSnapshot();
-    if (!snap) return;
+    if (!snap) return false;
     snapshotBusy = true;
-    try { await api('/autosave', { snapshot: snap }); } catch (e) {}
-    snapshotBusy = false;
+    try {
+      await api(slot === 'manual' ? '/manualsave' : '/autosave', { snapshot: snap });
+      snapshotBusy = false;
+      return true;
+    } catch (e) {
+      snapshotBusy = false;
+      return false;
+    }
   }
-  setInterval(pushSnapshot, 8000);   // 每 8 秒自动存一次
 
-  function clearSnapshot() {
+  function clearSnapshot(slot = 'auto') {
     if (!auth || !IS_ONLINE) return;
-    api('/snapshot/clear').catch(() => {});
+    api('/snapshot/clear', { slot }).catch(() => {});
   }
 
-  async function tryRestoreSnapshot() {
-    if (!auth || !IS_ONLINE || status !== 'playing') return;
-    let s;
-    try { s = (await api('/snapshot', null, 'GET')).snapshot; } catch (e) { return; }
-    if (!s || !s.pieces || !s.pieces.length) return;
-    const when = s.savedAt ? new Date(s.savedAt).toLocaleString() : '更早时候';
-    if (!confirm(`检测到上次未完成的对局\n时间：${when}\n分数：${s.score} 分，棋面 ${s.pieces.length} 个武将\n\n是否恢复继续玩？\n（选择取消将丢弃该存档）`)) {
-      clearSnapshot();
+  function fmtSlot(s) {
+    if (!s || !s.pieces || !s.pieces.length) return '（空）';
+    const t = s.savedAt ? new Date(s.savedAt).toLocaleString() : '';
+    return `${t} · ${s.score} 分 · ${s.pieces.length} 个武将`;
+  }
+
+  function renderSlots(auto, manual) {
+    $('autoInfo').textContent = fmtSlot(auto);
+    $('manualInfo').textContent = fmtSlot(manual);
+    const hasAuto = !!(auto && auto.pieces && auto.pieces.length);
+    const hasManual = !!(manual && manual.pieces && manual.pieces.length);
+    $('restoreAuto').disabled = !hasAuto;
+    $('delAuto').disabled = !hasAuto;
+    $('restoreManual').disabled = !hasManual;
+    $('delManual').disabled = !hasManual;
+  }
+
+  async function refreshSlots() {
+    const hint = $('slotHint');
+    if (!IS_ONLINE) {
+      hint.textContent = '当前是离线状态（直接双击打开文件），云存档不可用。通过网址访问即可使用。';
+      renderSlots(null, null);
       return;
     }
-    restoreBoard(s);
-    toast('已恢复上局进度，继续！');
+    if (!auth) {
+      hint.textContent = '登录后才能使用云存档（顶部「👤」创建账号/登录）。';
+      renderSlots(null, null);
+      return;
+    }
+    hint.textContent = `每 ${AUTO_SAVE_EVERY} 步自动保存到「自动存档」；「💾 存档」按钮随时手动记录。恢复会覆盖当前局面。`;
+    try {
+      const data = await api('/snapshots', null, 'GET');
+      renderSlots(data.auto, data.manual);
+    } catch (e) {
+      hint.textContent = '读取存档失败：' + e.message;
+      renderSlots(null, null);
+    }
   }
+
+  function openSlots() {
+    $('acctOverlay').classList.remove('show');
+    $('lbOverlay').classList.remove('show');
+    $('slotOverlay').classList.add('show');
+    refreshSlots();
+  }
+
+  async function restoreSlot(slot) {
+    if (!IS_ONLINE) { toast('离线状态无法读档'); return; }
+    try {
+      const data = await api('/snapshots', null, 'GET');
+      const s = slot === 'manual' ? data.manual : data.auto;
+      if (!s || !s.pieces || !s.pieces.length) { toast('该存档是空的'); return; }
+      restoreBoard(s);
+      $('slotOverlay').classList.remove('show');
+      toast(slot === 'manual' ? '📖 已读入手动存档，继续！' : '📖 已读入自动存档，继续！');
+    } catch (e) {
+      toast('读档失败：' + e.message);
+    }
+  }
+
+  async function deleteSlot(slot) {
+    if (!confirm(`确定删除${slot === 'manual' ? '手动' : '自动'}存档？此操作不可撤销。`)) return;
+    clearSnapshot(slot);
+    await new Promise(r => setTimeout(r, 300));   // 等删除请求发出后再刷新
+    refreshSlots();
+  }
+
+  $('saveBtn').addEventListener('click', async () => {
+    if (!IS_ONLINE) { toast('离线状态无法存档'); return; }
+    if (!auth) { openAcct(); return; }            // 未登录 → 引导注册/登录
+    if (status !== 'playing') { toast('当前没有进行中的对局'); return; }
+    const ok = await pushSnapshot('manual');
+    toast(ok ? '💾 手动存档成功' : '存档失败（棋面为空或网络异常）');
+  });
+  $('loadBtn').addEventListener('click', openSlots);
+  $('slotCloseBtn').addEventListener('click', () => $('slotOverlay').classList.remove('show'));
+  $('restoreAuto').addEventListener('click', () => restoreSlot('auto'));
+  $('restoreManual').addEventListener('click', () => restoreSlot('manual'));
+  $('delAuto').addEventListener('click', () => deleteSlot('auto'));
+  $('delManual').addEventListener('click', () => deleteSlot('manual'));
 
   // 重建棋面：忠实还原快照坐标（只做边界钳制）。
   // 实测证明：把静止的球按重叠坐标放回，Matter.js 的解压是温和的（瞬时球速 <2px/步，
@@ -882,7 +996,6 @@
   buildChain();
   restart();
   requestAnimationFrame(loop);
-  tryRestoreSnapshot();   // 登录状态下检查有无未完成的对局可恢复
 })();
 </script>
 </body>

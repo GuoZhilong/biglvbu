@@ -16,10 +16,11 @@
  *                          {score, maxLevel, games}
  *   POST /api/logout       (Authorization)         → {ok:true}
  *   GET  /api/leaderboard  (Authorization 可选)    → {top:[...], me:{rank,...}|null}
- *   POST /api/autosave     (Authorization)         → {ok:true}   单局中途存档
+ *   POST /api/autosave     (Authorization)         → {ok:true}   自动存档槽
  *                          {snapshot:{score,dropsCount,curIdx,nextIdx,lvbuCount,pieces}}
- *   GET  /api/snapshot     (Authorization)         → {snapshot|null}
- *   POST /api/snapshot/clear (Authorization)        → {ok:true}
+ *   POST /api/manualsave   (Authorization)         → {ok:true}   手动存档槽（同结构）
+ *   GET  /api/snapshots    (Authorization)         → {auto, manual}
+ *   POST /api/snapshot/clear (Authorization)        → {ok:true}   {slot:'auto'|'manual'|'all'}
  * ============================================================ */
 'use strict';
 const http = require('http');
@@ -218,21 +219,39 @@ const routes = {
     const s = validSnapshot(b.snapshot);
     if (s.err) return bad(res, s.err);
     s.data.savedAt = nowStr();
-    u.snapshot = s.data;
+    u.auto = s.data;
+    delete u.snapshot;        // 旧版单存档字段迁移清理
     saveDb();
     send(res, 200, { ok: true });
   },
 
-  'GET /api/snapshot': async (req, res) => {
+  'POST /api/manualsave': async (req, res) => {
     const u = authUser(req);
     if (!u) return send(res, 401, { error: '未登录或登录已过期' });
-    send(res, 200, { snapshot: u.snapshot || null });
+    const b = await readBody(req);
+    const s = validSnapshot(b.snapshot);
+    if (s.err) return bad(res, s.err);
+    s.data.savedAt = nowStr();
+    u.manual = s.data;
+    saveDb();
+    send(res, 200, { ok: true });
+  },
+
+  'GET /api/snapshots': async (req, res) => {
+    const u = authUser(req);
+    if (!u) return send(res, 401, { error: '未登录或登录已过期' });
+    // 旧版数据迁移：单存档 snapshot 视为自动存档
+    send(res, 200, { auto: u.auto || u.snapshot || null, manual: u.manual || null });
   },
 
   'POST /api/snapshot/clear': async (req, res) => {
     const u = authUser(req);
     if (!u) return send(res, 401, { error: '未登录或登录已过期' });
-    u.snapshot = null;
+    const b = await readBody(req);
+    const slot = b.slot || 'auto';
+    if (slot !== 'auto' && slot !== 'manual' && slot !== 'all') return bad(res, 'slot 非法');
+    if (slot === 'auto' || slot === 'all') { u.auto = null; delete u.snapshot; }
+    if (slot === 'manual' || slot === 'all') u.manual = null;
     saveDb();
     send(res, 200, { ok: true });
   },
